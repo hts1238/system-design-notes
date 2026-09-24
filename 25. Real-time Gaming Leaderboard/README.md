@@ -1,78 +1,78 @@
-# Chapter 25: Real-time Gaming Leaderboard
+# Глава 25: Таблица лидеров в онлайн-игре
 
-## Introduction
+## Введение
 
-We are going to design a **leaderboard** for an online mobile game:
+Спроектируем **таблицу лидеров** для онлайн-игры на мобильных устройствах:
 
 <div style="margin-left:3rem">
-    <img src="./images/leaderboard.png" alt="leaderboard" width="500" />
+    <img src="./images/leaderboard.png" alt="таблица лидеров" width="500" />
 </div>
 
 ---
 
-## Step 1: Understand the Problem and Establish Design Scope
+## Шаг 1: Разберёмся в задаче и определим рамки проектирования
 
-- C: How is the score calculated for the leaderboard?
-- I: User gets a point whenever they win a match.
-- C: Are all players included in the leaderboard?
-- I: Yes
-- C: Is there a time segment, associated with the leaderboard?
-- I: Each month, a new tournament starts which starts a new leaderboard.
-- C: Can we assume we only care about top 10 users?
-- I: We want to display top 10 users, along with position of specific user. If time permits, we can discuss showing users around particular user in the leaderboard.
-- C: How many users are in a tournament?
-- I: 5mil DAU and 25mil MAU
-- C: How many matches are played on average during a tournament?
-- I: Each player plays 10 matches per day on average
-- C: How do we determine the rank if two players have the same score?
-- I: Their rank is the same in that case. If time permits, we can discuss breaking ties.
-- C: Does the leaderboard need to be real-time?
-- I: Yes, we want to present real-time results or as close as possible to real-time. It is not okay to present batched result history.
+- C: Как рассчитывается счёт для таблицы лидеров?
+- I: Игрок получает одно очко за каждую выигранную игру.
+- C: В таблицу лидеров входят все игроки?
+- I: Да.
+- C: Таблица лидеров привязана к определённому временному периоду?
+- I: Каждый месяц начинается новый турнир и создаётся новая таблица лидеров.
+- C: Можно считать, что нас интересуют только 10 лучших игроков?
+- I: Нужно показывать 10 лучших игроков и место конкретного игрока. Если останется время, обсудим показ игроков, находящихся рядом с выбранным игроком в таблице.
+- C: Сколько игроков участвует в турнире?
+- I: 5 млн DAU и 25 млн MAU.
+- C: Сколько матчей в среднем проводится за турнир?
+- I: Каждый игрок в среднем играет 10 матчей в день.
+- C: Как определить место, если у двух игроков одинаковый счёт?
+- I: В этом случае они занимают одно и то же место. Если останется время, обсудим разрешение ничьих.
+- C: Таблица лидеров должна обновляться в реальном времени?
+- I: Да, результаты должны отображаться в реальном времени или максимально близко к нему. Показывать только историю пакетных обновлений нельзя.
 
-### **Functional requirements**
+### **Функциональные требования**
 
-- Display top 10 players on leaderboard
-- Show a user's specific rank
-- Display users which are four places above and below given user (bonus)
+- Показывать 10 лучших игроков в таблице лидеров.
+- Показывать место конкретного игрока.
+- Показывать игроков, занимающих четыре места выше и ниже указанного игрока (дополнительное требование).
 
-### **Non-functional requirements**
+### **Нефункциональные требования**
 
-- Real-time updates on scores
-- Score update is reflected on the leaderboard in real-time
-- General scalability, availability, reliability
+- Обновлять счёт в реальном времени.
+- Отображать изменение счёта в таблице лидеров в реальном времени.
+- Обеспечить масштабируемость, доступность и надёжность.
 
-### **Back-of-the-envelope estimation**
+### **Приблизительная оценка**
 
-With 50mil DAU, if the game has an even distribution of players during a 24h period, we'd have an average of 50 users per second.
-However, since distribution is typically uneven, we can estimate that the peak online users would be 250 users per second.
+При 50 млн DAU и равномерном распределении игроков в течение суток в среднем получим 50 пользователей в секунду.
+Однако нагрузка обычно распределена неравномерно, поэтому оценим пиковое число активных пользователей как 250 в секунду.
 
-QPS for users scoring a point - given 10 games per day on average, 50 users/s * 10 = 500 QPS. Peak QPS = 2500.
+QPS для игроков, получающих очки: при среднем значении 10 игр в день получаем 50 пользователей/с * 10 = 500 QPS. Пиковый QPS = 2500.
 
-QPS for fetching the top 10 leaderboard - assuming users open that once a day on average, QPS is 50.
+QPS для получения первой десятки таблицы лидеров: если пользователи в среднем открывают её раз в день, QPS равен 50.
 
 ---
 
-## Step 2: Propose High-Level Design and Get Buy-In
+## Шаг 2: Предложим архитектуру верхнего уровня и согласуем её
 
-### **API Design**
+### **Проектирование API**
 
-The first API we need is one to update a user's score:
+Первый необходимый API обновляет счёт игрока:
 
 ```
 POST /v1/scores
 ```
 
-This API takes two params - `user_id` and `points` scored for winning a game.
+Этот API принимает два параметра: `user_id` и `points` — количество очков за победу в игре.
 
-This API should only be accessible to game servers, not end clients.
+Этот API должен быть доступен только игровым серверам, но не клиентским приложениям.
 
-Next one is for getting the top 10 players of the leaderboard:
+Следующий API предназначен для получения 10 лучших игроков:
 
 ```
 GET /v1/scores
 ```
 
-Example response:
+Пример ответа:
 
 ```
 {
@@ -95,13 +95,13 @@ Example response:
 }
 ```
 
-You can also get the score of a particular user:
+Также можно получить счёт конкретного игрока:
 
 ```
 GET /v1/scores/{:user_id}
 ```
 
-Example response:
+Пример ответа:
 
 ```
 {
@@ -113,77 +113,77 @@ Example response:
 }
 ```
 
-### **High-level architecture**
+### **Архитектура верхнего уровня**
 
 <div style="margin-left:3rem">
-    <img src="./images/high-level-architecture.png" alt="high-level-architecture" width="500" />
+    <img src="./images/high-level-architecture.png" alt="архитектура верхнего уровня" width="500" />
 </div>
 
-- When a player wins a game, client sends a request to the game service
-- Game service validates if win is valid and calls the leaderboard service to update the player's score
-- Leaderboard service updates the user's score in the leaderboard store
-- Player makes a call to leaderboard service to fetch leaderboard data, eg top 10 players and given player's rank
+- Когда игрок выигрывает игру, клиент отправляет запрос игровому сервису.
+- Игровой сервис проверяет, что победа засчитана корректно, и вызывает сервис таблицы лидеров для обновления счёта игрока.
+- Сервис таблицы лидеров обновляет счёт игрока в хранилище.
+- Игрок обращается к сервису таблицы лидеров за данными, например за первой десяткой и местом конкретного игрока.
 
-An alternative design which was considered is the client updating their score directly within the leaderboard service:
+Рассматривался и альтернативный вариант, при котором клиент напрямую обновляет свой счёт через сервис таблицы лидеров:
 
 <div style="margin-left:3rem">
-    <img src="./images/alternative-design.png" alt="alternative-design" width="500" />
+    <img src="./images/alternative-design.png" alt="альтернативная архитектура" width="500" />
 </div>
 
-This option is not secure as it's susceptible to man-in-the-middle attacks. Players can put a proxy and change their score as they please.
+Этот вариант небезопасен, поскольку уязвим для атак типа «человек посередине». Игроки могут установить прокси и произвольно менять свой счёт.
 
-One additional caveat is that for games, where the game logic is managed by the server, cliets don't need to call the server explicitly to record their win.
-Servers do it automatically for them based on the game logic.
+Важно также учитывать, что в играх, где игровая логика выполняется на сервере, клиентам не нужно отдельно обращаться к серверу, чтобы зарегистрировать победу.
+Серверы делают это автоматически на основании игровой логики.
 
-One additional consideration is whether we should put a message queue between the game server and the leaderboard service. This would be useful if other services are interested in game results, but that is not an explicit requirement in the interview so far, hence it's not included in the design:
+Ещё один вопрос — нужна ли очередь сообщений между игровым сервером и сервисом таблицы лидеров. Она пригодилась бы, если бы результатами игр интересовались другие сервисы, но пока это явно не требуется в рамках задачи, поэтому очередь не включена в проектирование:
 
 <div style="margin-left:3rem">
-    <img src="./images/message-queue-based-comm.png" alt="message-queue-based-comm" width="500" />
+    <img src="./images/message-queue-based-comm.png" alt="взаимодействие через очередь сообщений" width="500" />
 </div>
 
-### **Data models**
+### **Модели данных**
 
-Let's discuss the options we have for storing leaderboard data - relational DBs, Redis, NoSQL.
+Рассмотрим варианты хранения данных таблицы лидеров: реляционные БД, Redis и NoSQL.
 
-The NoSQL solution is discussed in the deep dive section.
+Решение на основе NoSQL рассмотрим в разделе с подробным разбором.
 
-#### Relational database solution
+#### Решение на основе реляционной базы данных
 
-If the scale doesn't matter and we don't have that many users, a relational DB serves our quite well.
+Если масштаб невелик и пользователей не так много, реляционная БД вполне подойдёт.
 
-We can start from a simple leaderboard table, one for each month (personal note - this doesn't make sense. You can just add a `month` column and avoid the headache of maintaining new tables each month):
+Можно начать с простой таблицы лидеров для каждого месяца (заметка автора: это не имеет смысла. Достаточно добавить столбец `month`, чтобы не создавать и не обслуживать новую таблицу каждый месяц):
 
 <div style="margin-left:3rem">
-    <img src="./images/leaderboard-table.png" alt="leaderboard-table" width="500" />
+    <img src="./images/leaderboard-table.png" alt="таблица лидеров" width="500" />
 </div>
 
-There is additional data to include in there, but that is irrelevant to the queries we'd run, so it's omitted.
+В таблицу можно добавить и другие данные, но они не относятся к рассматриваемым запросам, поэтому здесь опущены.
 
-What happens when a user wins a point?
+Что происходит, когда игрок получает очко?
 
 <div style="margin-left:3rem">
-    <img src="./images/user-wins-point.png" alt="user-wins-point" width="500" />
+    <img src="./images/user-wins-point.png" alt="начисление очка игроку" width="500" />
 </div>
 
-If a user doesn't exist in the table yet, we need to insert them first:
+Если игрока ещё нет в таблице, сначала нужно добавить его:
 
 ```
 INSERT INTO leaderboard (user_id, score) VALUES ('mary1934', 1);
 ```
 
-On subsequent calls, we'd just update their score:
+При следующих вызовах достаточно обновить его счёт:
 
 ```
 UPDATE leaderboard set score=score + 1 where user_id='mary1934';
 ```
 
-How do we find the top players of a leaderboard?
+Как найти лучших игроков в таблице лидеров?
 
 <div style="margin-left:3rem">
-    <img src="./images/find-leaderboard-position.png" alt="find-leaderboard-position" width="500" />
+    <img src="./images/find-leaderboard-position.png" alt="поиск места в таблице лидеров" width="500" />
 </div>
 
-We can run the following query:
+Можно выполнить следующий запрос:
 
 ```
 SELECT (@rownum := @rownum + 1) AS rank, user_id, score
@@ -191,9 +191,9 @@ FROM leaderboard
 ORDER BY score DESC;
 ```
 
-This is not performant though as it makes a table scan to order all records in the database table.
+Однако этот запрос неэффективен, поскольку для сортировки всех записей таблицы приходится сканировать её целиком.
 
-We can optimize it by adding an index on `score` and using the `LIMIT` operation to avoid scanning everything:
+Его можно оптимизировать: добавить индекс по `score` и использовать `LIMIT`, чтобы не сканировать все записи:
 
 ```
 SELECT (@rownum := @rownum + 1) AS rank, user_id, score
@@ -202,39 +202,39 @@ ORDER BY score DESC
 LIMIT 10;
 ```
 
-This approach, however, doesn't scale well if the user is not at the top of the leaderboard and you'd want to locate their rank.
+Однако этот подход плохо масштабируется, если нужно найти место игрока, не входящего в первую часть таблицы лидеров.
 
-#### Redis solution
+#### Решение на основе Redis
 
-We want to find a solution, which works well even for millions of players without having to fallback on complex database queries.
+Нужно найти решение, которое хорошо работает даже с миллионами игроков и не требует сложных запросов к базе данных.
 
-Redis is an in-memory data store, which is fast as it works in-memory and has a suitable data structure to serve our needs - sorted set.
+Redis — это хранилище данных в памяти. Оно работает быстро и предоставляет подходящую для нашей задачи структуру данных — отсортированное множество.
 
-A sorted set is a data structure similar to sets in programming languages, which allows you to keep a data structure sorted by a given criteria.
-Internally, it is implemented using a hash-map to maintain mapping between key (user_id) and value (score) and a skip list which maps scores to users in sorted order:
-
-<div style="margin-left:3rem">
-    <img src="./images/sorted-set.png" alt="sorted-set" width="500" />
-</div>
-
-How does a skip list work?
-- It is a linked list which allows for fast search
-- It consists of a sorted linked list and multi-level indexes
+Отсортированное множество похоже на множества в языках программирования, но позволяет упорядочивать элементы по заданному критерию.
+Внутри оно реализовано с помощью hash map, которая хранит соответствие между ключом (`user_id`) и значением (`score`), и skip list, упорядочивающего пользователей по счёту:
 
 <div style="margin-left:3rem">
-    <img src="./images/skip-list.png" alt="skip-list" width="500" />
+    <img src="./images/sorted-set.png" alt="отсортированное множество" width="500" />
 </div>
 
-This structure enables us to quickly search for specific values when the data set is large enough.
-In the example below (64 nodes), it requires traversing 62 nodes in a base linked list to find the given value and 11 nodes in the skip-list case:
+Как работает skip list?
+- Это связный список, обеспечивающий быстрый поиск.
+- Он состоит из отсортированного связного списка и многоуровневых индексов.
 
 <div style="margin-left:3rem">
-    <img src="./images/skip-list-performance.png" alt="skip-list-performance" width="500" />
+    <img src="./images/skip-list.png" alt="структура skip list" width="500" />
 </div>
 
-Sorted sets are more performant than relational databases as the data is kept sorted at all times at the price of O(logN) add and find operation.
+Эта структура позволяет быстро искать конкретные значения в достаточно больших наборах данных.
+В приведённом ниже примере (64 узла) для поиска значения нужно пройти 62 узла в обычном связном списке и 11 узлов в skip list:
 
-In contract, here's an example nested query we need to run to find the rank of a given user in a relational DB:
+<div style="margin-left:3rem">
+    <img src="./images/skip-list-performance.png" alt="производительность skip list" width="500" />
+</div>
+
+Отсортированные множества работают быстрее реляционных баз данных, поскольку данные постоянно поддерживаются в отсортированном виде; цена этого — операции добавления и поиска со сложностью O(logN).
+
+Для сравнения: вот пример вложенного запроса, необходимого для определения места игрока в реляционной БД:
 
 ```
 SELECT *,(SELECT COUNT(*) FROM leaderboard lb2
@@ -243,195 +243,195 @@ FROM leaderboard lb1
 WHERE lb1.user_id = {:user_id};
 ```
 
-What operations do we need to operate our leaderboard in Redis?
-- **ZADD** - insert the user into the set if they don't exist. Otherwise, update the score. O(logN) time complexity.
-- **ZINCRBY** - increment the score of a user by given amount. If user doesn't exist, score starts at zero. O(logN) time complexity.
-- **ZRANGE/ZREVRANGE** - fetch a range of users, sorted by their score. We can specify order (ASC/DESC), offset and result size. O(logN+M) time complexity where M is result size.
-- **ZRANK/ZREVRANK** - Fetch the position (rank) of given user in ASC/DESC order. O(logN) time complexity.
+Какие операции Redis понадобятся для работы таблицы лидеров?
+- **ZADD** — добавляет игрока в множество, если его там ещё нет, иначе обновляет счёт. Сложность O(logN).
+- **ZINCRBY** — увеличивает счёт игрока на заданное значение. Если игрока ещё нет, его счёт начинается с нуля. Сложность O(logN).
+- **ZRANGE/ZREVRANGE** — получает диапазон игроков, отсортированных по счёту. Можно указать порядок (ASC/DESC), смещение и размер результата. Сложность O(logN+M), где M — размер результата.
+- **ZRANK/ZREVRANK** — получает место указанного игрока при сортировке по возрастанию или убыванию (ASC/DESC). Сложность O(logN).
 
-What happens when a user scores a point?
+Что происходит, когда игрок получает очко?
 
 ```
 ZINCRBY leaderboard_feb_2021 1 'mary1934'
 ```
 
-There's a new leaderboard created every month while old ones are moved to historical storage.
+Каждый месяц создаётся новая таблица лидеров, а старые перемещаются в историческое хранилище.
 
-What happens when a user fetches top 10 players?
+Что происходит, когда игрок запрашивает первую десятку?
 
 ```
 ZREVRANGE leaderboard_feb_2021 0 9 WITHSCORES
 ```
 
-Example result:
+Пример результата:
 
 ```
 [(user2,score2),(user1,score1),(user5,score5)...]
 ```
 
-What about user fetching their leaderboard position?
+Как игрок получает своё место в таблице?
 
 <div style="margin-left:3rem">
-    <img src="./images/leaderboard-position-of-user.png" alt="leaderboard-position-of-user" width="500" />
+    <img src="./images/leaderboard-position-of-user.png" alt="место игрока в таблице лидеров" width="500" />
 </div>
 
-This can be easily achieved by the following query, given that we know a user's leaderboard position:
+Если известно место игрока в таблице лидеров, это можно легко сделать следующим запросом:
 
 ```
 ZREVRANGE leaderboard_feb_2021 357 365
 ```
 
-A user's position can be fetched using `ZREVRANK <user-id>`.
+Место игрока можно получить с помощью `ZREVRANK <user-id>`.
 
-Let's explore what our storage requirements are:
-- Assuming worst-case scenario of all 25mil MAU participating in the game for a given month
-- ID is 24-character string and score is 16-bit integer, we need 26 bytes * 25mil = ~650MB of storage
-- Even if we double the storage cost due to the overhead of the skip list, this would still easily fit in a modern redis cluster
+Оценим требования к хранилищу:
+- В худшем случае все 25 млн MAU участвуют в игре в течение месяца.
+- Если ID — строка из 24 символов, а счёт — 16-битное целое число, потребуется 26 байт * 25 млн = ~650 МБ.
+- Даже если из-за накладных расходов skip list объём хранилища удвоится, данные без труда поместятся в современный кластер Redis.
 
-Another non-functional requirement to consider is supporting 2500 updates per second. This is well within a single Redis server's capabilities.
+Ещё одно нефункциональное требование — поддержка 2500 обновлений в секунду. Это вполне по силам одному серверу Redis.
 
-Additional caveats:
-- We can spin up a Redis replica to avoid losing data when a redis server crashes
-- We can still leverage Redis persistence to not lose data in the event of a crash
-- We'll need two supporting tables in MySQL to fetch user details such as username, display name, etc as well as store when eg a user won a game
-- The second table in MySQL can be used to reconstruct leaderboard when there is an infrastructure failure
-- As a small performance optimization, we could cache the user details of top 10 players as they'd be frequently accessed
+Дополнительные замечания:
+- Можно запустить реплику Redis, чтобы не потерять данные при сбое сервера.
+- Для защиты от потери данных при сбое можно также использовать механизмы персистентности Redis.
+- Понадобятся две вспомогательные таблицы MySQL: для получения сведений об игроках (например, имени пользователя и отображаемого имени) и для хранения событий, например побед игрока.
+- Вторую таблицу MySQL можно использовать для восстановления таблицы лидеров после сбоя инфраструктуры.
+- Для небольшого повышения производительности можно кэшировать данные 10 лучших игроков, поскольку к ним будут часто обращаться.
 
 ---
 
-## Step 3: Design Deep Dive
+## Шаг 3: Подробный разбор архитектуры
 
-### **To use a cloud provider or not**
+### **Использовать облачного провайдера или нет**
 
-We can either choose to deploy and manage our own services or use a cloud provider to manage them for us.
+Можно развернуть сервисы и управлять ими самостоятельно либо поручить управление облачному провайдеру.
 
-If we choose to manage the services our selves, we'll use redis for leaderboard data, mysql for user profile and potentially a cache for user profile if we want to scale the database:
-
-<div style="margin-left:3rem">
-    <img src="./images/manage-services-ourselves.png" alt="manage-services-ourselves" width="500" />
-</div>
-
-Alternatively, we could use cloud offerings to manage a lot of the services for us. For example, we can use AWS API Gateway to route API calls to AWS Lambda functions:
+Если мы будем управлять сервисами самостоятельно, для данных таблицы лидеров используем Redis, для профилей игроков — MySQL и, возможно, кэш профилей, если потребуется масштабировать базу данных:
 
 <div style="margin-left:3rem">
-    <img src="./images/api-gateway-mapping.png" alt="api-gateway-mapping" width="500" />
+    <img src="./images/manage-services-ourselves.png" alt="самостоятельное управление сервисами" width="500" />
 </div>
 
-AWS Lambda enables us to run code without managing or provisioning servers ourselves. It runs only when needed and scales automatically.
-
-Exmaple user scoring a point:
+В качестве альтернативы можно поручить облачным сервисам управление многими компонентами. Например, AWS API Gateway может направлять вызовы API в функции AWS Lambda:
 
 <div style="margin-left:3rem">
-    <img src="./images/user-scoring-point-lambda.png" alt="user-scoring-point-lambda" width="500" />
+    <img src="./images/api-gateway-mapping.png" alt="маршрутизация через API Gateway" width="500" />
 </div>
 
-Example user retrieving leaderboard:
+AWS Lambda позволяет выполнять код без самостоятельного управления серверами и их подготовки. Функции запускаются по мере необходимости и масштабируются автоматически.
+
+Пример начисления очка игроку:
 
 <div style="margin-left:3rem">
-    <img src="./images/user-retrieve-leaderboard.png" alt="user-retrieve-leaderboard" width="500" />
+    <img src="./images/user-scoring-point-lambda.png" alt="начисление очка игроку через Lambda" width="500" />
 </div>
 
-Lambdas are an implementation of a serverless architecture. We don't need to manage scaling and environment setup.
-
-Author recommends going with this approach if we build the game from the ground up.
-
-### **Scaling Redis**
-
-With 5mil DAU, we can get away with a single Redis instance from both a storage and QPS perspective.
-
-However, if we imagine userbase grows 10x to 500mil DAU, then we'd need 65gb for storage and QPS goes to 250k.
-
-Such scale would require sharding.
-
-One way to achieve it is by range-partitioning the data:
+Пример получения таблицы лидеров игроком:
 
 <div style="margin-left:3rem">
-    <img src="./images/range-partition.png" alt="range-partition" width="500" />
+    <img src="./images/user-retrieve-leaderboard.png" alt="получение таблицы лидеров игроком" width="500" />
 </div>
 
-In this example, we'll shard based on user's score. We'll maintain the mapping between user_id and shard in application code.
-We can do that either via MySQL or another cache for the mapping itself.
+Lambda — это реализация бессерверной архитектуры. Нам не нужно управлять масштабированием и настройкой среды.
 
-To fetch the top 10 players, we'd query the shard with the highest scores (`[900-1000]`).
+Автор рекомендует этот подход, если игра разрабатывается с нуля.
 
-To fetch a user's rank, we'll need to calculate the rank within the user's shard and add up all users with higher scores in other shards.
-The latter is a O(1) operation as total records per shard can quickly be accessed via the info keyspace command.
+### **Масштабирование Redis**
 
-Alternatively, we can use hash partitioning via Redis Cluster. It is a proxy which distributes data across redis nodes based on partitioning similar to consistent hashing, but not exactly the same:
+При 5 млн DAU достаточно одного экземпляра Redis как с точки зрения объёма хранилища, так и QPS.
+
+Однако если представить, что аудитория вырастет в 10 раз — до 500 млн DAU, — потребуется 65 ГБ хранилища, а QPS достигнет 250 тыс.
+
+Для такого масштаба потребуется шардинг.
+
+Один из способов — разделить данные по диапазонам:
 
 <div style="margin-left:3rem">
-    <img src="./images/hash-partition.png" alt="hash-partition" width="500" />
+    <img src="./images/range-partition.png" alt="разбиение по диапазонам" width="500" />
 </div>
 
-Calculating the top 10 players is challenging with this setup. We'll need to get the top 10 players of each shard and merge the results in the application:
+В этом примере шардинг выполняется по счёту игрока. Соответствие между `user_id` и шардом будет поддерживаться в коде приложения.
+Эту таблицу соответствий можно хранить в MySQL или отдельном кэше.
+
+Чтобы получить 10 лучших игроков, нужно запросить шард с наибольшими значениями счёта (`[900-1000]`).
+
+Чтобы определить место игрока, нужно вычислить его место в собственном шарде и прибавить число игроков с более высоким счётом в других шардах.
+Последняя операция выполняется за O(1), поскольку общее количество записей в шарде можно быстро получить командой info keyspace.
+
+В качестве альтернативы можно использовать хеш-разбиение с помощью Redis Cluster. Это прокси, распределяющий данные по узлам Redis с помощью разбиения, похожего, но не идентичного consistent hashing:
 
 <div style="margin-left:3rem">
-    <img src="./images/top-10-players-calculation.png" alt="top-10-players-calculation" width="500" />
+    <img src="./images/hash-partition.png" alt="хеш-разбиение" width="500" />
 </div>
 
-There are some limitations with the hash partitioning:
-- If we need to fetch top K users, where K is high, latency can increase as we'll need to fetch a lot of data from all the shards
-- Latency increases as the number of partitions grows
-- There is no straightforward approach to determine a user's rank
-
-Due to all this, the author leans towards using fixed partitions for this problem.
-
-Other caveats:
-- A best practice is to allocate twice as much memory as required for write-heavy redis nodes to accommodate snapshots if required
-- We can use a tool called Redis-benchmark to track the performance of a redis setup and make data-driven decisions
-
-### **Alternative solution: NoSQL**
-
-An alternative solution to consider is using an appropriate NoSQL database optimized for:
-- heavy writes
-- effectively sorting items within the same partition by score
-
-DynamoDB, Cassandra or MongoDB are all good fits.
-
-In this chapter, the author has decided to use DynamoDB. It is a fully-managed NoSQL database, which offers reliable performance and great scalability.
-It also enables usage of global secondary indexes when we need to query fields not part of the primary key.
+При такой схеме сложно вычислить первую десятку игроков. Нужно получить 10 лучших игроков из каждого шарда и объединить результаты в приложении:
 
 <div style="margin-left:3rem">
-    <img src="./images/dynamo-db.png" alt="dynamo-db" width="500" />
+    <img src="./images/top-10-players-calculation.png" alt="вычисление первой десятки игроков" width="500" />
 </div>
 
-Let's start from a table for storing a leaderboard for a chess game:
+У хеш-разбиения есть несколько ограничений:
+- Если нужно получить первых K игроков и K велико, задержка может увеличиться: придётся извлечь много данных из всех шардов.
+- Задержка растёт вместе с числом разделов.
+- Нет простого способа определить место игрока.
+
+Поэтому автор склоняется к использованию фиксированных разделов для этой задачи.
+
+Другие замечания:
+- Для узлов Redis с интенсивной записью рекомендуется выделять вдвое больше памяти, чем требуется, чтобы при необходимости вместить снимки.
+- Для измерения производительности конфигурации Redis и принятия решений на основе данных можно использовать инструмент Redis-benchmark.
+
+### **Альтернативное решение: NoSQL**
+
+В качестве альтернативы можно использовать подходящую NoSQL-базу данных, оптимизированную для:
+- интенсивной записи;
+- эффективной сортировки элементов внутри одного раздела по счёту.
+
+DynamoDB, Cassandra и MongoDB хорошо подходят для этой задачи.
+
+В этой главе автор выбрал DynamoDB — полностью управляемую NoSQL-базу данных с надёжной производительностью и высокой масштабируемостью.
+Она также позволяет использовать глобальные вторичные индексы для запросов по полям, не входящим в первичный ключ.
 
 <div style="margin-left:3rem">
-    <img src="./images/chess-game-leaderboard-table-1.png" alt="chess-game-leaderboard-table-1" width="500" />
+    <img src="./images/dynamo-db.png" alt="DynamoDB" width="500" />
 </div>
 
-This works well, but doesn't scale well if we need to query anything by score. Hence, we can put the score as a sort key:
+Начнём с таблицы для хранения таблицы лидеров шахматной игры:
 
 <div style="margin-left:3rem">
-    <img src="./images/chess-game-leaderboard-table-2.png" alt="chess-game-leaderboard-table-2" width="500" />
+    <img src="./images/chess-game-leaderboard-table-1.png" alt="таблица лидеров шахматной игры, вариант 1" width="500" />
 </div>
 
-Another problem with this design is that we're partitioning by month. This leads to a hotspot partition as the latest month will be unevenly accessed compared to the others.
-
-We could use a technique called write sharding, where we append a partition number for each key, calculated via `user_id % num_partitions`:
+Это решение работает, но плохо масштабируется, если нужно выполнять запросы по счёту. Поэтому можно использовать счёт в качестве ключа сортировки:
 
 <div style="margin-left:3rem">
-    <img src="./images/chess-game-leaderboard-table-3.png" alt="chess-game-leaderboard-table-3" width="500" />
+    <img src="./images/chess-game-leaderboard-table-2.png" alt="таблица лидеров шахматной игры, вариант 2" width="500" />
 </div>
 
-An important trade-off to consider is how many partitions we should use:
-- The more partitions there are, the higher the write scalability
-- However, read scalability suffers as we need to query more partitions to collect aggregate results
+Ещё одна проблема этого решения — разбиение по месяцам. Оно создаёт горячий раздел, поскольку к данным текущего месяца обращаются значительно чаще, чем к остальным.
 
-Using this approach requires that we use the "scatter-gather" technique we saw earlier, which grows in time complexity as we add more partitions:
+Можно применить технику write sharding: добавлять к каждому ключу номер раздела, вычисляемый по формуле `user_id % num_partitions`:
 
 <div style="margin-left:3rem">
-    <img src="./images/scatter-gather-2.png" alt="scatter-gather-2" width="500" />
+    <img src="./images/chess-game-leaderboard-table-3.png" alt="таблица лидеров шахматной игры, вариант 3" width="500" />
 </div>
 
-To make a good evaluation on the number of partitions, we'd need to do some benchmarking.
+При выборе количества разделов важно учитывать компромисс:
+- Чем больше разделов, тем выше масштабируемость записи.
+- Однако масштабируемость чтения снижается, поскольку для сбора агрегированных результатов нужно опрашивать больше разделов.
 
-This NoSQL approach still has one major downside - it is hard to calculate the specific rank of a user.
+Для этого подхода потребуется рассмотренная ранее техника «scatter-gather», временная сложность которой растёт с увеличением числа разделов:
 
-If we have sufficient scale to require us to shard, we could then perhaps tell users what "percentile" of scores they're in.
+<div style="margin-left:3rem">
+    <img src="./images/scatter-gather-2.png" alt="техника scatter-gather" width="500" />
+</div>
 
-A cron job can periodically run to analyze score distributions, based on which a user's percentile is determined, eg:
+Чтобы правильно выбрать количество разделов, потребуется провести тестирование производительности.
+
+У этого подхода на основе NoSQL остаётся один существенный недостаток: сложно вычислить конкретное место игрока.
+
+Если масштаб вынудит нас использовать шардинг, вместо этого можно сообщать игрокам, в каком процентиле результатов они находятся.
+
+Для анализа распределения результатов можно периодически запускать cron job, а затем определять процентиль игрока, например:
 
 ```
 10th percentile = score < 100
@@ -442,9 +442,9 @@ A cron job can periodically run to analyze score distributions, based on which a
 
 ---
 
-## Step 4: Wrap Up
+## Шаг 4: Итоги
 
-Other things to discuss if time permits:
-- **Faster retrieval** - We can cache the user object via a Redis hash with mapping `user_id -> user object`. This enables faster retrieval vs. querying the database.
-- **Breaking ties** - When two players have the same score, we can break the tie by sorting them based on last played game.
-- **System failure recovery** - In the event of a large-scale Redis outage, we can recreate the leaderboard by going through the MySQL WAL entries and recreate it via an ad-hoc script
+Другие темы для обсуждения, если останется время:
+- **Ускорение получения данных** — можно кэшировать объект игрока в хеше Redis, используя соответствие `user_id -> user object`. Это ускорит получение данных по сравнению с запросом к базе данных.
+- **Разрешение ничьих** — если у двух игроков одинаковый счёт, их можно упорядочить по времени последней сыгранной игры.
+- **Восстановление после сбоя системы** — при масштабном сбое Redis можно восстановить таблицу лидеров, обработав записи MySQL WAL с помощью одноразового скрипта.

@@ -1,588 +1,588 @@
-# Chapter 19: Distributed Message Queue
+# Глава 19: Распределённая очередь сообщений
 
-## Introduction
+## Введение
 
-We'll be designing a **distributed message queue** in this chapter.
+В этой главе мы спроектируем **распределённую очередь сообщений**.
 
-Benefits of message queues:
-- **Decoupling**: Eliminates tight coupling between components. Let them update separately.
-- **Improved scalability**: Producers and consumers can be scaled independently based on traffic.
-- **Increased availability**: If one part of the system goes down, other parts continue interacting with the queue.
-- **Better performance**: Producers can produce messages without waiting for consumer confirmation.
+Преимущества очередей сообщений:
+- **Слабая связанность**: устраняет тесную зависимость между компонентами и позволяет обновлять их независимо.
+- **Повышенная масштабируемость**: производители и потребители могут масштабироваться независимо друг от друга в зависимости от трафика.
+- **Повышенная доступность**: если одна часть системы выходит из строя, остальные продолжают взаимодействовать с очередью.
+- **Более высокая производительность**: производители могут отправлять сообщения, не дожидаясь подтверждения от потребителей.
 
-Some popular message queue implementations - Kafka, RabbitMQ, RocketMQ, Apache Pulsar, ActiveMQ, ZeroMQ.
+Популярные реализации очередей сообщений: Kafka, RabbitMQ, RocketMQ, Apache Pulsar, ActiveMQ, ZeroMQ.
 
-Strictly speaking, Kafka and Pulsar are not message queues. They are event streaming platforms.
-There is however a convergence of features which blurs the distinction between message queues and event streaming platforms.
+Строго говоря, Kafka и Pulsar — не очереди сообщений, а платформы потоковой передачи событий.
+Однако их функции сближаются, и различие между очередями сообщений и платформами потоковой передачи событий становится менее чётким.
 
-In this chapter, we'll be building a message queue with support for more advanced features such as long data retention, repeated message consumption, etc.
-
----
-
-## Step 1: Understand the Problem and Establish Design Scope
-
-Message queues ought to support few basic features - producers produce messages and consumers consume them.
-There are, however, different considerations with regards to performance, message delivery, data retention, etc.
-
-Here's a set of potential questions between Candidate and Interviewer:
- * C: What's the format and average message size? Is it text only?
- * I: Messages are text-only and usually a few KBs
- * C: Can messages be repeatedly consumed?
- * I: Yes, messages can be repeatedly consumed by different consumers. This is an added requirement, which traditional message queues don't support.
- * C: Are messages consumed in the same order they were produced?
- * I: Yes, order guarantee should be preserved. This is an added requirement, traditional message queues don't support this.
- * C: What are the data retention requirements?
- * I: Messages need to have a retention of two weeks. This is an added requirement.
- * C: How many producers and consumers do we want to support?
- * I: The more, the better.
- * C: What data delivery semantic do we want to support? At-most-once, at-least-once, exactly-once?
- * I: We definitely want to support at-least-once. Ideally, we can support all and make them configurable.
- * C: What's the target throughput for end-to-end latency?
- * I: It should support high throughput for use cases like log aggregation and low throughput for more traditional use cases.
-
-### **Functional requirements**
-
- * Producers send messages to a message queue
- * Consumers consume messages from the queue
- * Messages can be consumed once or repeatedly
- * Historical data can be truncated
- * Message size is in the KB range
- * Order of messages needs to be preserved
- * Data delivery semantics is configurable - at-most-once/at-least-once/exactly-once.
-
-### **Non-functional requirements**
-
-- **High throughput or low latency**: Configurable based on use-case
-- **Scalable**: system should be distributed and support a sudden surge in message volume
-- **Persistent and durable**: data should be persisted on disk and replicated among nodes
-
-Traditional message queues typically don't support data retention and don't provide ordering guarantees. This greatly simplifies the design and we'll discuss it.
+В этой главе мы построим очередь сообщений с поддержкой более продвинутых возможностей: длительного хранения данных, повторного чтения сообщений и т. д.
 
 ---
 
-## Step 2: Propose High-Level Design and Get Buy-In
+## Шаг 1: Понимание задачи и определение границ проектирования
 
-Key components of a message queue:
+Очереди сообщений должны поддерживать несколько базовых функций: производители отправляют сообщения, а потребители их получают.
+При этом необходимо учитывать производительность, доставку сообщений, срок хранения данных и другие аспекты.
 
-<div style="margin-left:3rem">
-    <img src="./images/message-queue-components.png" alt="message-queue-components" width="500" />
-</div>
+Возможный список вопросов кандидата интервьюеру:
+ * К: Какой формат и средний размер сообщений? Это только текст?
+ * И: Сообщения содержат только текст и обычно занимают несколько КБ.
+ * К: Можно ли получать сообщения повторно?
+ * И: Да, разные потребители могут получать сообщения повторно. Это дополнительное требование, которое традиционные очереди сообщений не поддерживают.
+ * К: Сохраняется ли порядок получения сообщений таким же, каким был порядок их отправки?
+ * И: Да, порядок должен гарантироваться. Это дополнительное требование, которое традиционные очереди сообщений не поддерживают.
+ * К: Каковы требования к сроку хранения данных?
+ * И: Сообщения нужно хранить две недели. Это дополнительное требование.
+ * К: Сколько производителей и потребителей нужно поддерживать?
+ * И: Чем больше, тем лучше.
+ * К: Какие гарантии доставки данных нужны: не более одного раза, не менее одного раза или ровно один раз?
+ * И: Обязательно нужна доставка не менее одного раза. В идеале поддерживаются все варианты с возможностью настройки.
+ * К: Какова целевая пропускная способность и сквозная задержка?
+ * И: Система должна поддерживать высокую пропускную способность для таких сценариев, как агрегация журналов, и низкую пропускную способность для более традиционных сценариев.
 
- * Producer sends messages to a queue
- * Consumer subscribes to a queue and consumes the subscribed messages
- * Message queue is a service in the middle which decouples producers from consumers, letting them scale independently.
- * Producer and consumer are both clients, while the message queue is the server.
+### **Функциональные требования**
 
-### **Messaging models**
+ * Производители отправляют сообщения в очередь сообщений.
+ * Потребители получают сообщения из очереди.
+ * Сообщения можно получать один или несколько раз.
+ * Исторические данные можно удалять.
+ * Размер сообщений измеряется килобайтами.
+ * Порядок сообщений должен сохраняться.
+ * Гарантии доставки данных настраиваются: не более одного раза, не менее одного раза или ровно один раз.
 
-The first type of messaging model is point-to-point and it's commonly found in traditional message queues:
+### **Нефункциональные требования**
 
-<div style="margin-left:3rem">
-    <img src="./images/point-to-point-model.png" alt="point-to-point-model" width="500" />
-</div>
+- **Высокая пропускная способность или низкая задержка**: настраивается в зависимости от сценария использования.
+- **Масштабируемость**: система должна быть распределённой и выдерживать резкий рост объёма сообщений.
+- **Постоянное и надёжное хранение**: данные должны сохраняться на диске и реплицироваться между узлами.
 
- * A message is sent to a queue and it's consumed by exactly one consumer.
- * There can be multiple consumers, but a message is consumed only once.
- * Once message is acknowledged as consumed, it is removed from the queue.
- * There is no data retention in the point-to-point model, but there is such in our design.
-
-On the other hand, the publish-subscribe model is more common for event streaming platforms:
-
-<div style="margin-left:3rem">
-    <img src="./images/publish-subscribe-model.png" alt="publish-subscribe-model" width="500" />
-</div>
-
- * In this model, messages are associated to a topic.
- * Consumers are subscribed to a topic and they receive all messages sent to this topic.
-
-### **Topics, partitions and brokers**
-
-What if the data volume for a topic is too large? One way to scale is by splitting a topic into partitions (aka sharding):
-
-<div style="margin-left:3rem">
-    <img src="./images/partitions.png" alt="partitions" width="500" />
-</div>
-
- * Messages sent to a topic are evenly distributed across partitions
- * The servers that host partitions are called brokers
- * Each topic operates like a queue using FIFO for message processing. Message order is preserved within a partition.
- * The position of a message within the partition is called an **offset**.
- * Each message produced is sent to a specific partition. A partition key specifies which partition a message should land in. 
-   * Eg a `user_id` can be used as a partition key to guarantee order of messages for the same user.
- * Each consumer subscribes to one or more partitions. When there are multiple consumers for the same messages, they form a consumer group.
-
-### **Consumer groups**
-
-Consumer groups are a set of consumers working together to consume messages from a topic:
-
-<div style="margin-left:3rem">
-    <img src="./images/consumer-groups.png" alt="consumer-groups" width="500" />
-</div>
-
- * Messages are replicated per consumer group (not per consumer).
- * Each consumer group maintains its own offset.
- * Reading messages in parallel by a consumer group improves throughput but hampers the ordering guarantee.
- * This can be mitigated by only allowing one consumer from a group to be subscribed to a partition. 
- * This means that we can't have more consumers in a group than there are partitions.
-
-### **High-level architecture**
-
-<div style="margin-left:3rem">
-    <img src="./images/high-level-architecture.png" alt="high-level-architecture" width="500" />
-</div>
-
-- **Clients**: producer and consumer. Producer pushes messages to a designated topic. Consumer group subscribes to messages from a topic.
-- **Brokers**: hold multiple partitions. A partition holds a subset of messages for a topic.
-- **Data storage**: stores messages in partitions.
-- **State storage**: keeps the consumer states.
-- **Metadata storage**: stores configuration and topic properties
-- **Coordination service**: responsible for service discovery (which brokers are alive) and leader election (which broker is leader, responsible for assigning partitions).
+Традиционные очереди сообщений обычно не поддерживают длительное хранение данных и не гарантируют порядок. Это значительно упрощает проектирование; далее мы обсудим этот аспект.
 
 ---
 
-## Step 3: Design Deep Dive
+## Шаг 2: Предложение архитектуры высокого уровня и согласование решения
 
-In order to achieve high throughput and preserve the high data retention requirement, we made some important design choices:
- * We chose an on-disk data structure which takes advantage of the properties of modern HDD and disk caching strategies of modern OS-es.
- * The message data structure is immutable to avoid extra copying, which we want to avoid in a high volume/high traffic system.
- * We designed our writes around batching as small I/O is an enemy of high throughput.
-
-### **Data storage**
-
-In order to find the best data store for messages, we must examine a message's properties:
- * Write-heavy, read-heavy
- * No update/delete operations. In traditional message queues, there is a "delete" operation as messages are not retained.
- * Predominantly sequential read/write access pattern.
-
-What are our options:
-- **Database**: not ideal as typical databases don't support well both write and read heavy systems.
-- **Write-ahead log (WAL)**: a plain text file which only supports appending to it and is very HDD-friendly. 
-  * We split partitions into segments to avoid maintaining a very large file.
-  * Old segments are read-only. Writes are accepted by latest segment only.
+Основные компоненты очереди сообщений:
 
 <div style="margin-left:3rem">
-    <img src="./images/wal-example.png" alt="wal-example" width="500" />
+    <img src="./images/message-queue-components.png" alt="Компоненты очереди сообщений" width="500" />
 </div>
 
-WAL files are extremely efficient when used with traditional HDDs. 
+ * Производитель отправляет сообщения в очередь.
+ * Потребитель подписывается на очередь и получает сообщения из неё.
+ * Очередь сообщений — промежуточный сервис, отделяющий производителей от потребителей и позволяющий им масштабироваться независимо.
+ * Производитель и потребитель являются клиентами, а очередь сообщений — сервером.
 
-There is a misconception that HDD acces is slow, but that hugely depends on the access pattern.
-When the access pattern is sequential (as in our case), HDDs can achieve several MB/s write/read speed which is sufficient for our needs.
-We also piggyback on the fact that the OS caches disk data in memory aggressively.
+### **Модели обмена сообщениями**
 
-### **Message data structure**
-
-It is important that the message schema is compliant between producer, queue and consumer to avoid extra copying. This allows much more efficient processing.
-
-Example message structure:
+Первая модель обмена сообщениями — «точка-точка»; она часто встречается в традиционных очередях сообщений:
 
 <div style="margin-left:3rem">
-    <img src="./images/message-structure.png" alt="message-structure" width="500" />
+    <img src="./images/point-to-point-model.png" alt="Модель «точка-точка»" width="500" />
 </div>
 
-The key of the message specifies which partition a message belongs to. An example mapping is `hash(key) % numPartitions`.
-For more flexibility, the producer can override default keys in order to control which partitions messages are distributed to.
+ * Сообщение отправляется в очередь и обрабатывается ровно одним потребителем.
+ * Потребителей может быть несколько, но каждое сообщение обрабатывается только один раз.
+ * После подтверждения обработки сообщение удаляется из очереди.
+ * В модели «точка-точка» данные не хранятся длительно, в отличие от проектируемой нами системы.
 
-The message value is the payload of a message. It can be plaintext or a compressed binary block.
-
-**Note:** Message keys, unlike traditional KV stores, need not be unique. It is acceptable to have duplicate keys and for it to even be missing.
-
-Other message files:
-- **Topic**: topic the message belongs to
-- **Partition**: The ID of the partition a message belongs to
-- **Offset**: The position of the message in a partition. A message can be located via `topic`, `partition`, `offset`.
-- **Timestamp**: When the message is stored
-- **Size**: the size of this message
-- **CRC**: checksum to ensure message integrity
-
-Additional features such as filtering can be supported by adding additional fields.
-
-### **Batching**
-
-Batching is critical for the performance of our system. We apply it in the producer, consumer and message queue.
-
-It is critical because:
- * It allows the operating system to group messages together, amortizing the cost of expensive network round trips
- * Messages are written to the WAL in groups sequentially, which leads to a lot of sequential writes and disk caching.
-
-There is a trade-off between latency and throughput:
- * High batching leads to high throughput and higher latency. 
- * Less batching leads to lower throughput and lower latency.
-
-If we need to support lower latency since the system is deployed as a traditional message queue, the system could be tuned to use a smaller batch size.
-
-If tuned for throughput, we might need more partitions per topic to compensate for the slower sequential disk write throughput.
-
-### **Producer flow**
-
-If a producer wants to send a message to a partition, which broker should it connect to?
-
-One option is to introduce a routing layer, which route messages to the correct broker. If replication is enabled, the correct broker is the leader replica:
+Модель «публикация-подписка», напротив, чаще используется на платформах потоковой передачи событий:
 
 <div style="margin-left:3rem">
-    <img src="./images/routing-layer.png" alt="routing-layer" width="500" />
+    <img src="./images/publish-subscribe-model.png" alt="Модель публикации и подписки" width="500" />
 </div>
 
- * Routing layer reads the replication plan from the metadata store and caches it locally.
- * Producer sends a message to the routing layer.
- * Message is forwarded to broker 1 who is the leader of the given partition
- * Follower replicas pull the new message from the leader. Once enough confirmations are received, the leader commits the data and responds to the producer.
+ * В этой модели сообщения связаны с темой.
+ * Потребители подписываются на тему и получают все отправленные в неё сообщения.
 
-The reason for having replicas is to enable fault tolerance.
+### **Темы, разделы и брокеры**
 
-This approach works but has some drawbacks:
- * Additional network hops due to the extra component
- * The design doesn't enable batching messages
-
-To mitigate these issues, we can embed the routing layer into the producer:
+Что делать, если объём данных одной темы слишком велик? Один из способов масштабирования — разделить тему на разделы (то есть выполнить шардирование):
 
 <div style="margin-left:3rem">
-    <img src="./images/routing-layer-producer.png" alt="routing-layer-producer" width="500" />
+    <img src="./images/partitions.png" alt="Разделы" width="500" />
 </div>
 
- * Fewer network hops lead to lower latency
- * Producers can control which partition a message is routed to
- * The buffer allows us to batch messages in-memory and send out larger batches in a single request, which increases throughput.
+ * Сообщения, отправленные в тему, равномерно распределяются по разделам.
+ * Серверы, на которых размещаются разделы, называются брокерами.
+ * Каждая тема работает как очередь с обработкой сообщений по принципу FIFO. Порядок сообщений сохраняется внутри раздела.
+ * Позиция сообщения в разделе называется **смещением**.
+ * Каждое отправленное сообщение попадает в определённый раздел. Ключ раздела задаёт, в какой раздел должно попасть сообщение.
+   * Например, в качестве ключа раздела можно использовать `user_id`, чтобы гарантировать порядок сообщений для одного пользователя.
+ * Каждый потребитель подписывается на один или несколько разделов. Если несколько потребителей получают одни и те же сообщения, они образуют группу потребителей.
 
-The batch size choice is a classical trade-off between throughput and latency. 
+### **Группы потребителей**
+
+Группа потребителей — это набор потребителей, совместно обрабатывающих сообщения темы:
 
 <div style="margin-left:3rem">
-    <img src="./images/batch-size-throughput-vs-latency.png" alt="batch-size-throughput-vs-latency" width="500" />
+    <img src="./images/consumer-groups.png" alt="Группы потребителей" width="500" />
 </div>
 
- * Larger batch size leads to longer wait time before batch is committed. 
- * Smaller batch size leads to request being sent sooner and having lower latency but lower throughput.
+ * Сообщения реплицируются для каждой группы потребителей, а не для каждого потребителя.
+ * Каждая группа потребителей хранит собственное смещение.
+ * Параллельное чтение сообщений группой повышает пропускную способность, но ослабляет гарантию порядка.
+ * Эту проблему можно смягчить, разрешив подписываться на раздел только одному потребителю из группы.
+ * Следовательно, в группе не может быть больше потребителей, чем разделов.
 
-### **Consumer flow**
-
-The consumer specifies its offset in a partition and receives a chunk of messages, beginning from that offset:
+### **Архитектура высокого уровня**
 
 <div style="margin-left:3rem">
-    <img src="./images/consumer-example.png" alt="consumer-example" width="500" />
+    <img src="./images/high-level-architecture.png" alt="Архитектура высокого уровня" width="500" />
 </div>
 
-One important consideration when designing the consumer is whether to use a push or a pull model:
-- **Push model**: leads to lower latency as broker pushes messages to consumer as it receives them.
-  * However, if rate of consumption falls behind the rate of production, the consumer can be overwhelmed.
-  * It is challenging to deal with consumers with varying processing power as the broker controls the rate of consumption.
-- **Pull model**: leads to the consumer controlling the consumption rate. 
-  * If rate of consumption is slow, consumer will not be overwhelmed and we can scale it to catch up.
-  * The pull model is more suitable for batch processing, because with the push model, the broker can't know how many messages a consumer can handle. 
-  * With the pull model, on the other hand, consumers can aggressively fetch large message batches.
-  * The down side is the higher latency and extra network calls when there are no new messages. Latter issue can be mitigated using long polling.
+- **Клиенты**: производитель и потребитель. Производитель отправляет сообщения в заданную тему. Группа потребителей подписывается на сообщения темы.
+- **Брокеры**: размещают несколько разделов. В каждом разделе хранится часть сообщений темы.
+- **Хранилище данных**: хранит сообщения в разделах.
+- **Хранилище состояний**: хранит состояния потребителей.
+- **Хранилище метаданных**: хранит конфигурацию и свойства тем.
+- **Сервис координации**: отвечает за обнаружение сервисов (какие брокеры активны) и выбор лидера (какой брокер является лидером и отвечает за назначение разделов).
 
-Hence, most message queues (and us) choose the pull model.
+---
+
+## Шаг 3: Подробное проектирование
+
+Чтобы обеспечить высокую пропускную способность и длительное хранение данных, мы приняли несколько важных проектных решений:
+ * Мы выбрали дисковую структуру данных, использующую особенности современных HDD и стратегий кэширования дисков в современных ОС.
+ * Структура сообщения неизменяема, чтобы избежать лишнего копирования, особенно нежелательного в системе с большим объёмом данных и высоким трафиком.
+ * Мы организовали запись пакетами, поскольку мелкие операции ввода-вывода мешают достижению высокой пропускной способности.
+
+### **Хранение данных**
+
+Чтобы выбрать лучшее хранилище сообщений, рассмотрим их свойства:
+ * интенсивная запись и интенсивное чтение;
+ * операции обновления и удаления не нужны. В традиционных очередях сообщений есть операция «удаления», поскольку сообщения не хранятся длительно;
+ * преимущественно последовательный шаблон чтения и записи.
+
+Какие есть варианты?
+- **База данных**: не лучший выбор, поскольку типичные базы данных плохо справляются одновременно с интенсивными чтением и записью.
+- **Журнал предварительной записи (WAL)**: обычный текстовый файл, в который можно только добавлять данные; он хорошо подходит для HDD.
+  * Мы делим разделы на сегменты, чтобы не работать с одним очень большим файлом.
+  * Старые сегменты доступны только для чтения. Запись выполняется только в последний сегмент.
 
 <div style="margin-left:3rem">
-    <img src="./images/consumer-flow.png" alt="consumer-flow" width="500" />
+    <img src="./images/wal-example.png" alt="Пример журнала предварительной записи" width="500" />
 </div>
 
- * A new consumer subscribes to topic A and joins group 1.
- * The correct broker node is found by hashing the group name. This way, all consumers in a group connect to the same broker.
- * Note that this consumer group coordinator is different from the coordination service (ZooKeeper).
- * Coordinator confirms that the consumer has joined the group and assigns partition 2 to that consumer.
- * There are different partition assignment strategies - round-robin, range, etc.
- * Consumer fetches latest messages from the last offset. The state storage keeps the consumer offsets.
- * Consumer processes messages and commits the offset to the broker. The order of those operations affects the message delivery semantics.
+Файлы WAL чрезвычайно эффективны при использовании с традиционными HDD.
 
-### **Consumer rebalancing**
+Существует заблуждение, что HDD работают медленно, хотя производительность во многом зависит от шаблона доступа.
+При последовательном доступе, как в нашем случае, скорость чтения и записи HDD может достигать нескольких МБ/с, что достаточно для наших задач.
+Кроме того, мы используем то, что ОС активно кэширует данные с диска в памяти.
 
-Consumer rebalancing is responsible for deciding which consumers are responsible for which partition.
+### **Структура данных сообщения**
 
-This process occurs when a consumer joins/leaves or a partition is added/removed.
+Важно, чтобы производитель, очередь и потребитель использовали совместимую схему сообщения: это избавляет от лишнего копирования и значительно повышает эффективность обработки.
 
-The broker, acting as a coordinator plays a huge role in orchestrating the rebalancing workflow.
+Пример структуры сообщения:
 
 <div style="margin-left:3rem">
-    <img src="./images/consumer-rebalancing.png" alt="consumer-rebalancing" width="500" />
+    <img src="./images/message-structure.png" alt="Структура сообщения" width="500" />
 </div>
 
- * All consumers from the same group are connected to the same coordinator. The coordinator is found by hashing the group name.
- * When the consumer list changes, the coordinator chooses a new leader of the group.
- * The leader of the group calculates a new partition dispatch plan and reports it back to the coordinator, which broadcasts it to the other consumers.
+Ключ сообщения определяет, к какому разделу оно относится. Пример соответствия: `hash(key) % numPartitions`.
+Для большей гибкости производитель может переопределить ключи по умолчанию и управлять распределением сообщений по разделам.
 
-When the coordinator stops receiving heartbeats from the consumers in a group, a rebalancing is triggered:
+Значение сообщения — это его полезная нагрузка. Она может быть обычным текстом или сжатым двоичным блоком.
+
+**Примечание:** в отличие от традиционных хранилищ «ключ — значение», ключи сообщений не обязаны быть уникальными. Допускаются повторяющиеся ключи, а также сообщения без ключа.
+
+Другие поля сообщения:
+- **Тема**: тема, к которой относится сообщение.
+- **Раздел**: идентификатор раздела, к которому относится сообщение.
+- **Смещение**: позиция сообщения в разделе. Сообщение можно найти по `topic`, `partition`, `offset`.
+- **Временная метка**: время сохранения сообщения.
+- **Размер**: размер этого сообщения.
+- **CRC**: контрольная сумма для проверки целостности сообщения.
+
+Дополнительные возможности, например фильтрацию, можно поддержать добавлением дополнительных полей.
+
+### **Пакетная обработка**
+
+Пакетная обработка критически важна для производительности системы. Мы применяем её на стороне производителя, потребителя и очереди сообщений.
+
+Она важна по следующим причинам:
+ * операционная система может объединять сообщения, распределяя накладные расходы дорогостоящих сетевых обменов между ними;
+ * сообщения записываются в WAL последовательными группами, что обеспечивает множество последовательных операций записи и эффективное кэширование диска.
+
+Между задержкой и пропускной способностью есть компромисс:
+ * крупные пакеты повышают пропускную способность, но увеличивают задержку;
+ * небольшие пакеты снижают пропускную способность и задержку.
+
+Если система используется как традиционная очередь сообщений и требуется снизить задержку, её можно настроить на меньший размер пакета.
+
+Если система настроена на пропускную способность, может потребоваться больше разделов на тему, чтобы компенсировать ограниченную скорость последовательной записи на диск.
+
+### **Поток обработки на стороне производителя**
+
+К какому брокеру должен подключиться производитель, чтобы отправить сообщение в раздел?
+
+Один из вариантов — добавить уровень маршрутизации, который будет направлять сообщения нужному брокеру. Если включена репликация, нужный брокер — ведущая реплика:
 
 <div style="margin-left:3rem">
-    <img src="./images/consumer-rebalance-example.png" alt="consumer-rebalance-example" width="500" />
+    <img src="./images/routing-layer.png" alt="Уровень маршрутизации" width="500" />
 </div>
 
-Let's explore what happens when a consumer joins a group:
+ * Уровень маршрутизации считывает план репликации из хранилища метаданных и кэширует его локально.
+ * Производитель отправляет сообщение на уровень маршрутизации.
+ * Сообщение пересылается брокеру 1, который является лидером данного раздела.
+ * Реплики-последователи получают новое сообщение от лидера. Когда получено достаточно подтверждений, лидер фиксирует данные и отвечает производителю.
+
+Реплики нужны для обеспечения отказоустойчивости.
+
+Этот подход работает, но у него есть недостатки:
+ * дополнительный компонент увеличивает количество сетевых переходов;
+ * такая архитектура не позволяет объединять сообщения в пакеты.
+
+Чтобы устранить эти недостатки, можно встроить уровень маршрутизации в производителя:
 
 <div style="margin-left:3rem">
-    <img src="./images/consumer-join-group-usecase.png" alt="consumer-join-group-usecase" width="500" />
+    <img src="./images/routing-layer-producer.png" alt="Уровень маршрутизации на стороне производителя" width="500" />
 </div>
 
- * Initially, only consumer A is in the group and it consumes all partitions.
- * Consumer B sends a request to join the group.
- * The coordinator notifies all group members that it's time to rebalance passively - as a response to the heartbeat.
- * Once all consumers rejoin the group, the coordinator chooses a leader and notifies the rest about the election result.
- * The leader generates the partition dispatch plan and sends it to the coordinator. Others wait for the dispatch plan.
- * Consumers start consuming from the newly assigned partitions.
+ * Меньше сетевых переходов — ниже задержка.
+ * Производители могут выбирать, в какой раздел направлять сообщение.
+ * Буфер позволяет объединять сообщения в пакеты в памяти и отправлять крупные пакеты одним запросом, повышая пропускную способность.
 
-Here's what happens when a consumer leaves the group:
+Выбор размера пакета — классический компромисс между пропускной способностью и задержкой.
 
 <div style="margin-left:3rem">
-    <img src="./images/consumer-leaves-group-usecase.png" alt="consumer-leaves-group-usecase" width="500" />
+    <img src="./images/batch-size-throughput-vs-latency.png" alt="Зависимость пропускной способности и задержки от размера пакета" width="500" />
 </div>
 
- * Consumer A and B are in the same group
- * Consumer B asks to leave the group
- * When coordinator receives A's heartbeat, it informs them that it's time to rebalance.
- * The rest of the steps are the same.
+ * При большем размере пакета приходится дольше ждать перед его фиксацией.
+ * При меньшем размере пакета запрос отправляется раньше, что снижает задержку, но и уменьшает пропускную способность.
 
-The process is similar when a consumer doesn't send a heartbeat for a long time:
+### **Поток обработки на стороне потребителя**
+
+Потребитель указывает смещение в разделе и получает пакет сообщений, начиная с этой позиции:
 
 <div style="margin-left:3rem">
-    <img src="./images/consumer-no-heartbeat-usecase.png" alt="consumer-no-heartbeat-usecase" width="500" />
+    <img src="./images/consumer-example.png" alt="Пример работы потребителя" width="500" />
 </div>
 
-### **State storage**
+При проектировании потребителя важно выбрать между моделью отправки и моделью получения:
+- **Модель отправки (push)**: обеспечивает меньшую задержку, поскольку брокер отправляет потребителю сообщения сразу после их получения.
+  * Однако если скорость обработки отстаёт от скорости поступления сообщений, потребитель может быть перегружен.
+  * Сложно обслуживать потребителей с разной производительностью, поскольку скорость поступления сообщений контролирует брокер.
+- **Модель получения (pull)**: потребитель сам контролирует скорость получения сообщений.
+  * Если скорость обработки низкая, потребитель не будет перегружен, а его производительность можно увеличить, чтобы обработать накопившиеся сообщения.
+  * Модель получения лучше подходит для пакетной обработки: при модели отправки брокер не знает, сколько сообщений способен обработать потребитель.
+  * При модели получения потребители могут активно запрашивать большие пакеты сообщений.
+  * Недостатки — более высокая задержка и дополнительные сетевые запросы, когда новых сообщений нет. Последнюю проблему можно смягчить с помощью длительного опроса.
 
-The state storage stores mapping between partitions and consumers, as well as the last consumed offsets for a partition.
+Поэтому большинство очередей сообщений, включая нашу, выбирают модель получения.
 
 <div style="margin-left:3rem">
-    <img src="./images/state-storage.png" alt="state-storage" width="500" />
+    <img src="./images/consumer-flow.png" alt="Поток обработки на стороне потребителя" width="500" />
 </div>
 
-Group 1's offset is at 6, meaning all previous messages are consumed. If a consumer crashes, the new consumer will continue from that message on wards.
+ * Новый потребитель подписывается на тему A и присоединяется к группе 1.
+ * Нужный брокер определяется хешированием имени группы. Таким образом, все потребители группы подключаются к одному брокеру.
+ * Обратите внимание: координатор группы потребителей отличается от сервиса координации (ZooKeeper).
+ * Координатор подтверждает, что потребитель присоединился к группе, и назначает ему раздел 2.
+ * Существуют разные стратегии назначения разделов: round-robin, по диапазонам и другие.
+ * Потребитель получает новые сообщения начиная с последнего смещения. Смещения потребителей хранятся в хранилище состояний.
+ * Потребитель обрабатывает сообщения и фиксирует смещение у брокера. Порядок этих операций влияет на гарантии доставки сообщений.
+
+### **Перебалансировка потребителей**
+
+Перебалансировка потребителей определяет, какие потребители отвечают за каждый раздел.
+
+Этот процесс запускается при присоединении или выходе потребителя, а также при добавлении или удалении раздела.
+
+Брокер, выступающий координатором, играет ключевую роль в организации процесса перебалансировки.
+
+<div style="margin-left:3rem">
+    <img src="./images/consumer-rebalancing.png" alt="Перебалансировка потребителей" width="500" />
+</div>
+
+ * Все потребители одной группы подключены к одному координатору. Координатор определяется хешированием имени группы.
+ * Когда список потребителей меняется, координатор выбирает нового лидера группы.
+ * Лидер группы рассчитывает новый план распределения разделов и передаёт его координатору, который рассылает план остальным потребителям.
+
+Когда координатор перестаёт получать сигналы активности от потребителей группы, запускается перебалансировка:
+
+<div style="margin-left:3rem">
+    <img src="./images/consumer-rebalance-example.png" alt="Пример перебалансировки потребителей" width="500" />
+</div>
+
+Рассмотрим, что происходит при присоединении потребителя к группе:
+
+<div style="margin-left:3rem">
+    <img src="./images/consumer-join-group-usecase.png" alt="Присоединение потребителя к группе" width="500" />
+</div>
+
+ * Сначала в группе находится только потребитель A, который обрабатывает все разделы.
+ * Потребитель B отправляет запрос на присоединение к группе.
+ * В ответ на сигнал активности координатор сообщает всем участникам группы, что пора начать пассивную перебалансировку.
+ * После повторного присоединения всех потребителей координатор выбирает лидера и сообщает остальным результат выборов.
+ * Лидер формирует план распределения разделов и отправляет его координатору. Остальные ждут этот план.
+ * Потребители начинают обработку назначенных им разделов.
+
+Рассмотрим, что происходит, когда потребитель покидает группу:
+
+<div style="margin-left:3rem">
+    <img src="./images/consumer-leaves-group-usecase.png" alt="Выход потребителя из группы" width="500" />
+</div>
+
+ * Потребители A и B состоят в одной группе.
+ * Потребитель B отправляет запрос на выход из группы.
+ * Получив сигнал активности от A, координатор сообщает участникам, что пора начать перебалансировку.
+ * Остальные шаги такие же.
+
+Похожий процесс происходит, когда потребитель долго не отправляет сигнал активности:
+
+<div style="margin-left:3rem">
+    <img src="./images/consumer-no-heartbeat-usecase.png" alt="Отсутствие сигнала активности от потребителя" width="500" />
+</div>
+
+### **Хранилище состояний**
+
+Хранилище состояний содержит соответствие между разделами и потребителями, а также последние обработанные смещения разделов.
+
+<div style="margin-left:3rem">
+    <img src="./images/state-storage.png" alt="Хранилище состояний" width="500" />
+</div>
+
+Смещение группы 1 равно 6, то есть все предыдущие сообщения обработаны. Если потребитель выйдет из строя, новый продолжит обработку с этого сообщения.
  
-Data access patterns for consumer states:
- * Frequent read/write operations, but low volume
- * Data is updated frequently, but rarely deleted
- * Random read/write
- * Data consistency is important
+Шаблоны доступа к данным о состояниях потребителей:
+ * частые операции чтения и записи, но небольшой объём данных;
+ * данные часто обновляются, но редко удаляются;
+ * произвольное чтение и запись;
+ * важна согласованность данных.
 
-Given these requirements, a fast KV storage like Zookeeper is ideal.
+С учётом этих требований идеально подойдёт быстрое хранилище «ключ — значение», например ZooKeeper.
 
-### **Metadata storage**
+### **Хранилище метаданных**
 
-The metadata storage stores configuration and topic properties - partition number, retention period, replica distribution.
+Хранилище метаданных содержит конфигурацию и свойства тем: количество разделов, срок хранения и распределение реплик.
 
-Metadata doesn't change often and volume is small, but there is a high consistency requirement.
-Zookeeper is a good choice for this storage.
+Метаданные меняются нечасто, а их объём невелик, но к согласованности предъявляются высокие требования.
+ZooKeeper хорошо подходит для такого хранилища.
 
 ### **ZooKeeper**
 
-Zookeeper is essential for building distributed message queues.
+ZooKeeper необходим для построения распределённых очередей сообщений.
 
-It is a hierarchical key-value store, commonly used for a distributed configuration, synchronization service and naming registry (ie service discovery).
+Это иерархическое хранилище «ключ — значение», которое обычно используется для распределённой конфигурации, службы синхронизации и реестра имён (то есть для обнаружения сервисов).
 
 <div style="margin-left:3rem">
     <img src="./images/zookeeper.png" alt="zookeeper" width="500" />
 </div>
 
-With this change, the broker only needs to maintain data for the messages. Metadata and state storage is in Zookeeper.
+После этого изменения брокеру нужно хранить только данные сообщений. Метаданные и состояния хранятся в ZooKeeper.
 
-Zookeeper also helps with leader election of the broker replicas.
+ZooKeeper также помогает выбирать лидера среди реплик брокера.
 
-### **Replication**
+### **Репликация**
 
-In distributed systems, hardware issues are inevitable. We can tackle this via replication to achieve high availability.
-
-<div style="margin-left:3rem">
-    <img src="./images/replication-example.png" alt="replication-example" width="500" />
-</div>
-
- * Each partition is replicated across multiple brokers, but there is only one leader replica.
- * Producers send messages to leader replicas
- * Followers pull the replicated messages from the leader
- * Once enough replicas are synchronized, the leader returns acknowledgment to the producer
- * Distribution of replicas for each partition is called the replica distribution plan.
- * The leader for a given partition creates the replica distribution plan and saves it in Zookeeper
-
-### **In-sync replicas**
-
-One problem we need to tackle is keeping messages in-sync between the leader and the followers for a given partition.
-
-In-sync replicas (ISR) are replicas for a partition that stay in-sync with the leader.
-
-The `replica.lag.max.messages` defines how many messages can a replica be lagging behind the leader to be considered in-sync.
+В распределённых системах аппаратные сбои неизбежны. Для обеспечения высокой доступности можно использовать репликацию.
 
 <div style="margin-left:3rem">
-    <img src="./images/in-sync-replicas-example.png" alt="in-sync-replicas-example" width="500" />
+    <img src="./images/replication-example.png" alt="Пример репликации" width="500" />
 </div>
 
- * Committed offset is 13
- * Two new messages are written to the leader, but not committed yet.
- * A message is committed once all replicas in the ISR have synchronized that message
- * Replica 2 and 3 have fully caught up with leader, hence, they are in ISR
- * Replica 4 has lagged behind, hence, is removed from ISR for now
+ * Каждый раздел реплицируется на нескольких брокерах, но ведущая реплика только одна.
+ * Производители отправляют сообщения ведущим репликам.
+ * Реплики-последователи получают копии сообщений от лидера.
+ * После синхронизации достаточного числа реплик лидер отправляет производителю подтверждение.
+ * Распределение реплик каждого раздела называется планом распределения реплик.
+ * Лидер раздела создаёт этот план и сохраняет его в ZooKeeper.
 
-ISR reflects a trade-off between performance and durability.
- * In order for producers not to lose messages, all replicas should be in sync before sending an acknowledgment
- * But a slow replica will cause the whole partition to become unavailable
+### **Синхронизированные реплики**
 
-Acknowledgment handling is configurable.
+Одна из задач — поддерживать синхронизацию сообщений между лидером и репликами-последователями данного раздела.
 
-`ACK=all` means that all replicas in ISR have to sync a message. Message sending is slow, but message durability is highest.
+Синхронизированные реплики (ISR) — это реплики раздела, которые не отстают от лидера.
+
+Параметр `replica.lag.max.messages` задаёт, насколько реплика может отставать от лидера в сообщениях, чтобы считаться синхронизированной.
 
 <div style="margin-left:3rem">
-    <img src="./images/ack-all.png" alt="ack-all" width="500" />
+    <img src="./images/in-sync-replicas-example.png" alt="Пример синхронизированных реплик" width="500" />
 </div>
 
-`ACK=1` means that producer receives acknowledgment once leader receives the message. Message sending is fast, but message durability is low.
+ * Зафиксированное смещение равно 13.
+ * Лидеру записаны два новых сообщения, но они ещё не зафиксированы.
+ * Сообщение фиксируется после того, как его получат все реплики из ISR.
+ * Реплики 2 и 3 полностью синхронизировались с лидером, поэтому входят в ISR.
+ * Реплика 4 отстала и пока исключена из ISR.
+
+ISR отражает компромисс между производительностью и надёжностью хранения.
+ * Чтобы производители не теряли сообщения, перед отправкой подтверждения нужно дождаться синхронизации всех реплик.
+ * Однако медленная реплика может сделать весь раздел недоступным.
+
+Обработку подтверждений можно настроить.
+
+`ACK=all` означает, что сообщение должны получить все реплики из ISR. Отправка сообщений медленнее, но надёжность их хранения максимальна.
+
+<div style="margin-left:3rem">
+    <img src="./images/ack-all.png" alt="Подтверждение от всех реплик (ack=all)" width="500" />
+</div>
+
+`ACK=1` означает, что производитель получает подтверждение сразу после получения сообщения лидером. Сообщения отправляются быстро, но надёжность их хранения невысока.
 
 <div style="margin-left:3rem">
     <img src="./images/ack-1.png" alt="ack-1" width="500" />
 </div>
 
-`ACK=0` means that producer sends messages without waiting for any acknowledgment from leader. Message sending is fastest, message durability is lowest.
+`ACK=0` означает, что производитель отправляет сообщения, не дожидаясь подтверждения лидера. Это самый быстрый способ отправки, но надёжность хранения сообщений минимальна.
 
 <div style="margin-left:3rem">
     <img src="./images/ack-0.png" alt="ack-0" width="500" />
 </div>
 
-On the consumer side, we can connect all consumers to the leader for a partition and let them read messages from it:
- * This makes for the simplest design and easiest operation
- * Messages in a partition are sent to only one consumer in a group, which limits the connections to the leader replica
- * The number of connections to leader replica is typically not high as long as the topic is not super hot
- * We can scale a hot topic by increasing the number of partitions and consumers
- * In certain scenarios, it might make sense to let a consumer lead from an ISR, eg if they're located in a separate DC
+Со стороны потребителей можно подключить всех потребителей к лидеру раздела и читать сообщения с него:
+ * это наиболее простая архитектура и эксплуатация;
+ * сообщения раздела отправляются только одному потребителю в группе, что ограничивает число соединений с ведущей репликой;
+ * обычно число соединений с ведущей репликой невелико, если тема не слишком востребована;
+ * можно масштабировать популярную тему, увеличив число разделов и потребителей;
+ * в некоторых случаях потребителю может быть удобнее читать с реплики из ISR, например если он находится в другом ЦОД.
 
-The ISR list is maintained by the leader who tracks the lag between itself and each replica.
+Список ISR поддерживается лидером, который отслеживает отставание каждой реплики.
 
-### **Scalability**
+### **Масштабируемость**
 
-Let's evaluate how we can scale different parts of the system.
+Рассмотрим, как можно масштабировать разные части системы.
 
-#### Producer
+#### Производитель
 
-The producer is much smaller than the consumer. Its scalability can easily be achieved by adding/removing new producer instances.
+Производитель значительно проще потребителя. Его легко масштабировать, добавляя или удаляя экземпляры.
 
-#### Consumer
+#### Потребитель
 
-Consumer groups are isolated from each other. It is easy to add/remove consumer groups at will.
+Группы потребителей изолированы друг от друга. Их можно свободно добавлять и удалять.
 
-Rebalancing help handle the case when consumers are added/removed from a group gracefully.
+Перебалансировка позволяет корректно обрабатывать добавление и удаление потребителей в группе.
 
-Consumer groups are rebalancing help us achieve scalability and fault tolerance.
+Перебалансировка групп потребителей помогает обеспечить масштабируемость и отказоустойчивость.
 
-#### Broker
+#### Брокер
 
-How do brokers handle failure?
-
-<div style="margin-left:3rem">
-    <img src="./images/broker-failure-recovery.png" alt="broker-failure-recovery" width="500" />
-</div>
-
- * Once a broker fails, there are still enough replicas to avoid partition data loss
- * A new leader is elected and the broker coordinator redistributes partitions which were at the failed broker to existing replicas
- * Existing replicas pick up the new partitions and act as followers until they're caught up with the leader and become ISR
-
-Additional considerations to make the broker fault-tolerant:
- * The minimum number of ISRs balances latency and safety. You can fine-tune it to meet your needs.
- * If all replicas of a partition are in the same node, then it's a waste of resources. Replicas should be across different brokers.
- * If all replicas of a partition crash, then the data is lost forever. Spreading replicas across data centers can help, but it adds up a lot of latency. One option is to use [data mirroring](https://cwiki.apache.org/confluence/pages/viewpage.action?pageId=27846330) as a work around.
-
-How do we handle redistribution of replicas when a new broker is added?
+Как брокеры обрабатывают сбои?
 
 <div style="margin-left:3rem">
-    <img src="./images/broker-replica-redistribution.png" alt="broker-replica-redistribution" width="500" />
+    <img src="./images/broker-failure-recovery.png" alt="Восстановление после отказа брокера" width="500" />
 </div>
 
- * We can temporarily allow more replicas than configured, until new broker catches up
- * Once it does, we can remove the partition replica which is no longer needed
+ * После отказа брокера остаётся достаточно реплик, чтобы избежать потери данных раздела.
+ * Выбирается новый лидер, а координатор брокеров перераспределяет разделы отказавшего брокера между существующими репликами.
+ * Существующие реплики принимают новые разделы и работают как последователи, пока не синхронизируются с лидером и не войдут в ISR.
 
-#### Partition
+Дополнительные факторы, повышающие отказоустойчивость брокера:
+ * Минимальное число ISR позволяет сбалансировать задержку и надёжность. Его можно настроить в соответствии с требованиями.
+ * Если все реплики раздела размещены на одном узле, ресурсы расходуются неэффективно. Реплики следует распределять по разным брокерам.
+ * При отказе всех реплик раздела данные будут потеряны безвозвратно. Распределение реплик по разным ЦОД может помочь, но значительно увеличит задержку. В качестве обходного решения можно использовать [зеркалирование данных](https://cwiki.apache.org/confluence/pages/viewpage.action?pageId=27846330).
 
-Whenever a new partition is added, the producer is notified and consumer rebalancing is triggered.
-
-In terms of data storage, we can only store new messages to the new partition vs. trying to copy all old ones:
+Как перераспределить реплики при добавлении нового брокера?
 
 <div style="margin-left:3rem">
-    <img src="./images/partition-exmaple.png" alt="partition-example" width="500" />
+    <img src="./images/broker-replica-redistribution.png" alt="Перераспределение реплик брокеров" width="500" />
 </div>
 
-Decreasing the number of partitions is more involved:
+ * Можно временно разрешить больше реплик, чем задано в конфигурации, пока новый брокер не синхронизируется.
+ * После этого можно удалить ставшую ненужной реплику раздела.
+
+#### Раздел
+
+При добавлении нового раздела производитель получает уведомление, а для потребителей запускается перебалансировка.
+
+С точки зрения хранения данных, в новый раздел можно записывать только новые сообщения, не копируя в него все старые:
 
 <div style="margin-left:3rem">
-    <img src="./images/partition-decrease.png" alt="partition-decrease" width="500" />
+    <img src="./images/partition-exmaple.png" alt="Пример раздела" width="500" />
 </div>
 
- * Once a partition is decommissioned, new messages are only received by remaining partitions
- * The decommissioned partition isn't removed immediately as messages can still be consumed from it
- * Once a pre-configured retention period passes, do we truncate the data and storage space is freed up
- * During the transitional period, producers only send messages to active partitions, but consumers read from all
- * Once retention period expires, consumers are rebalanced
-
-### **Data delivery semantics**
-
-Let's discuss different delivery semantics.
-
-#### At-most once
-
-With this guarantee, messages are delivered not more than once and could not be delivered at all.
+Уменьшить число разделов сложнее:
 
 <div style="margin-left:3rem">
-    <img src="./images/at-most-once.png" alt="at-most-once" width="500" />
+    <img src="./images/partition-decrease.png" alt="Уменьшение числа разделов" width="500" />
 </div>
 
- * Producer sends a message asynchronously to a topic. If message delivery fails, there is no retry.
- * Consumer fetches message and immediately commits offset. If consumer crashes before processing the message, the message will not be processed.
+ * После вывода раздела из эксплуатации новые сообщения поступают только в оставшиеся разделы.
+ * Выведенный из эксплуатации раздел не удаляется сразу, поскольку из него ещё могут получать сообщения.
+ * После истечения заданного срока хранения данные удаляются, а место в хранилище освобождается.
+ * В переходный период производители отправляют сообщения только в активные разделы, а потребители читают из всех разделов.
+ * После истечения срока хранения выполняется перебалансировка потребителей.
 
-#### At-least once
+### **Гарантии доставки данных**
 
-A message can be sent more than once and no message should be left unprocessed.
+Рассмотрим разные гарантии доставки.
+
+#### Не более одного раза
+
+При такой гарантии сообщение доставляется не более одного раза, но может не доставиться вовсе.
 
 <div style="margin-left:3rem">
-    <img src="./images/at-least-once.png" alt="at-least-once" width="500" />
+    <img src="./images/at-most-once.png" alt="Не более одного раза" width="500" />
 </div>
 
- * Producer sends message with `ack=1` or `ack=all`. If there is any issue, it will keep retrying.
- * Consumer fetches the message and consumes the offset only after it's done processing it.
- * It is possible for a message to be delivered more than once if eg consumer crashes before committing offset but after processing it.
- * This is why, this is good for use-cases where data duplication is acceptable or deduplication is possible.
+ * Производитель асинхронно отправляет сообщение в тему. Если доставка не удалась, повторной попытки нет.
+ * Потребитель получает сообщение и сразу фиксирует смещение. Если до обработки сообщения потребитель выйдет из строя, сообщение обработано не будет.
 
-#### Exactly once
+#### Не менее одного раза
 
-Extremely costly to implement for the system, albeit it's the friendliest guarantee to users:
+Сообщение может быть отправлено несколько раз, но ни одно сообщение не должно остаться необработанным.
 
 <div style="margin-left:3rem">
-    <img src="./images/exactly-once.png" alt="exactly-once" width="500" />
+    <img src="./images/at-least-once.png" alt="Не менее одного раза" width="500" />
 </div>
 
-### **Advanced features**
+ * Производитель отправляет сообщение с `ack=1` или `ack=all`. При возникновении проблем он продолжает повторять попытки.
+ * Потребитель получает сообщение и фиксирует смещение только после завершения его обработки.
+ * Сообщение может быть доставлено несколько раз, например если потребитель завершится после обработки сообщения, но до фиксации смещения.
+ * Поэтому такая гарантия подходит для сценариев, в которых допустимы дубликаты данных или их можно устранить.
 
-Let's discuss some advanced features, we might discuss in the interview.
+#### Ровно один раз
 
-#### Message filtering
-
-Some consumers might want to only consume messages of a certain type within a partition.
-
-This can be achieved by building separate topics for each subset of messages, but this can be costly if systems have too many differing use-cases.
- * It is a waste of resources to store the same message on different topics
- * Producer is now tightly coupled to consumers as it changes with each new consumer requirement
-
-We can resolve this using message filtering.
- * A naive approach would be to do the filtering on the consumer-side, but that introduces unnecessary consumer traffic
- * Alternatively, messages can have tags attached to them and consumers can specify which tags they're subscribed to
- * Filtering could also be done via the message payloads but that can be challenging and unsafe for encrypted/serialized messages
- * For more complex mathematical formulaes, the broker could implement a grammar parser or script executor, but that can be heavyweight for the message queue
+Эту гарантию чрезвычайно сложно и дорого реализовать, хотя для пользователей она наиболее удобна:
 
 <div style="margin-left:3rem">
-    <img src="./images/message-filtering.png" alt="message-filtering" width="500" />
+    <img src="./images/exactly-once.png" alt="Ровно один раз" width="500" />
 </div>
 
-#### Delayed messages & scheduled messages
+### **Расширенные возможности**
 
-For some use-cases, we might want to delay or schedule message delivery. 
-For example, we might submit a payment verification check for 30m from now, which triggers the consumer to see if a payment was successful.
+Рассмотрим некоторые расширенные возможности, которые могут обсуждаться на интервью.
 
-This can be achieved by sending messages to temporary storage in the broker and moving the message to the partition at the right time:
+#### Фильтрация сообщений
+
+Некоторым потребителям могут быть нужны только сообщения определённого типа из раздела.
+
+Для этого можно создать отдельную тему для каждой подгруппы сообщений, но при большом числе разных сценариев использования это может быть слишком затратно.
+ * Хранение одного и того же сообщения в разных темах приводит к лишнему расходу ресурсов.
+ * Производитель становится тесно связан с потребителями, поскольку его приходится менять при каждом новом требовании потребителя.
+
+Решить эту задачу можно с помощью фильтрации сообщений.
+ * Наивный подход — выполнять фильтрацию на стороне потребителя, но это приводит к лишнему трафику для потребителей.
+ * Можно добавлять к сообщениям теги, а потребители смогут указывать, на какие теги они подписаны.
+ * Фильтрацию можно выполнять и по полезной нагрузке сообщения, но это сложно и небезопасно для зашифрованных или сериализованных сообщений.
+ * Для более сложных математических выражений брокер мог бы использовать парсер грамматики или интерпретатор скриптов, но это может чрезмерно усложнить очередь сообщений.
 
 <div style="margin-left:3rem">
-    <img src="./images/delayed-message-implementation.png" alt="delayed-message-implementation" width="500" />
+    <img src="./images/message-filtering.png" alt="Фильтрация сообщений" width="500" />
 </div>
 
- * The temporary storage can be one or more special message topics
- * The timing function can be achieved using dedicated delay queues or a [hierarchical time wheel](http://www.cs.columbia.edu/~nahum/w6998/papers/sosp87-timing-wheels.pdf)
+#### Отложенные и запланированные сообщения
+
+В некоторых сценариях может потребоваться отложить доставку сообщения или запланировать её на определённое время.
+Например, можно запланировать проверку платежа через 30 минут, чтобы потребитель проверил, прошёл ли платёж успешно.
+
+Для этого сообщение отправляют во временное хранилище брокера, а в нужный момент перемещают в раздел:
+
+<div style="margin-left:3rem">
+    <img src="./images/delayed-message-implementation.png" alt="Реализация отложенной доставки сообщений" width="500" />
+</div>
+
+ * Временным хранилищем может служить одна или несколько специальных тем сообщений.
+ * Планирование времени можно реализовать с помощью специальных очередей задержки или [иерархического колеса времени](http://www.cs.columbia.edu/~nahum/w6998/papers/sosp87-timing-wheels.pdf).
 
 ---
 
-## Step 4: Wrap Up
+## Шаг 4: Итоги
 
-Additional talking points:
-- **Protocol of communication**: Important considerations - support all use-cases and high data volume, as well as verify message integrity. Popular protocols - AMQP and Kafka protocol.
-- **Retry consumption**: if we can't process a message immediately, we could send it to a dedicated retry topic to be attempted later.
-- **Historical data archive**: old messages can be backed up in high-capacity storages such as HDFS or object storage (eg S3).
+Дополнительные темы для обсуждения:
+- **Протокол взаимодействия**: важно поддерживать все сценарии использования и большие объёмы данных, а также проверять целостность сообщений. Популярные протоколы — AMQP и протокол Kafka.
+- **Повторная обработка**: если сообщение не удаётся обработать сразу, его можно отправить в отдельную тему повторных попыток.
+- **Архив исторических данных**: старые сообщения можно архивировать в хранилищах большой ёмкости, например HDFS или объектном хранилище (например, S3).

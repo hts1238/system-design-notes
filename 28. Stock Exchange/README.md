@@ -1,314 +1,314 @@
-# Chapter 28: Stock Exchange
+# Глава 28: Фондовая биржа
 
-## Introduction
-We'll design an **electronic stock exchange** in this chapter.
+## Введение
+В этой главе мы спроектируем **электронную фондовую биржу**.
 
-Its basic function is to efficiently match buyers and sellers.
+Её основная функция — эффективно сопоставлять заявки покупателей и продавцов.
 
-Major stock exchanges are **NYSE**, **NASDAQ**, among others.
+Крупнейшие фондовые биржи — **NYSE**, **NASDAQ** и другие.
 
 <div style="margin-left:3rem">
-    <img src="./images/world-stock-exchanges.png" alt="world-stock-exchanges" width="500" />
+    <img src="./images/world-stock-exchanges.png" alt="фондовые биржи мира" width="500" />
 </div>
 
 ---
 
-## Step 1: Understand the Problem and Establish Design scope
- * C: Which securities are we going to trade? Stocks, options or futures?
- * I: Only stocks for simplicity
- * C: Which order types are supported - place, cancel, replace? What about limit, market, conditional orders?
- * I: We need to support placing and canceling an order. We need to only consider limit orders for the order type.
- * C: Does the system need to support after hours trading?
- * I: No, just normal trading hours
- * C: Could you describe the exchange's basic functions?
- * I: Clients can place or cancel limit orders and receive matched trades in real-time. They should be able to see the order book in real time.
- * C: What's the scale of the exchange?
- * I: Tens of thousands of users trading at the same time and ~100 symbols. Billions of orders per day. We need to also support risk checks for compliance.
- * C: What kind of risk checks?
- * I: Let's do simple risk checks - eg limiting a user to trade only 1mil apple stocks in a day
- * C: How about user wallet engagement?
- * I: We need to ensure clients have sufficient funds before placing orders. Funds meant for pending orders need to be withheld until order is finalized.
+## Шаг 1: Разберёмся в задаче и определим рамки проектирования
+ * C: Какими ценными бумагами будем торговать: акциями, опционами или фьючерсами?
+ * I: Для простоты — только акциями.
+ * C: Какие операции с заявками поддерживаются: размещение, отмена, замена? А какие типы заявок — лимитные, рыночные, условные?
+ * I: Нужно поддерживать размещение и отмену заявок. Из типов заявок рассматриваем только лимитные.
+ * C: Нужно ли поддерживать внебиржевые часы торговли?
+ * I: Нет, только обычные часы торгов.
+ * C: Опишите основные функции биржи.
+ * I: Клиенты могут размещать и отменять лимитные заявки и получать сведения о совершённых сделках в реальном времени. Они также должны видеть биржевой стакан в реальном времени.
+ * C: Каков масштаб биржи?
+ * I: Десятки тысяч одновременно торгующих пользователей и около 100 символов. Миллиарды заявок в день. Также нужно выполнять проверки рисков для соблюдения требований.
+ * C: Какие проверки рисков?
+ * I: Простые проверки, например ограничение объёма торговли пользователя одним миллионом акций Apple в день.
+ * C: Как будут использоваться кошельки пользователей?
+ * I: Перед размещением заявки нужно убедиться, что у клиента достаточно средств. Средства для незавершённых заявок необходимо резервировать до их окончательного исполнения.
 
-### **Non-functional requirements**
-The scale mentioned by the interviewer hints that we are to design a small to medium scale exchange.
-We need to also ensure flexibility to support more symbols and users in the future.
+### **Нефункциональные требования**
+Указанный интервьюером масштаб позволяет предположить, что мы проектируем биржу малого или среднего размера.
+Также необходимо предусмотреть возможность в будущем поддерживать больше символов и пользователей.
 
-Other non-functional requirements:
- * Availability - At least 99.99%. Downtime can harm reputation
- * Fault tolerance - fault tolerance and a fast recovery mechanism are needed to limit the impact of a production incident
- * Latency - Round-trip latency should be in the ms level with focus on 99th percentile. Persistently high 99p latency causes bad experience for a handful or users.
- * Security - We should have an account management system. For legal compliance, we need to support KYC to verify user identity. We should also protect against DDoS for public resources.
+Другие нефункциональные требования:
+ * Доступность — не менее 99,99%. Простои могут навредить репутации.
+ * Отказоустойчивость — необходимы отказоустойчивая архитектура и быстрое восстановление, чтобы ограничить последствия производственного инцидента.
+ * Задержка — круговая задержка должна измеряться миллисекундами, при этом особое внимание уделяется 99-му перцентилю. Постоянно высокая задержка на уровне 99-го перцентиля ухудшает работу системы для части пользователей.
+ * Безопасность — нужна система управления учётными записями. Для соблюдения законодательства необходимо поддерживать KYC для подтверждения личности пользователя. Также нужно защищать общедоступные ресурсы от DDoS.
 
-### **Back-of-the-envelope estimation**
- * 100 symbols, 1bil orders per day
- * Normal trading hours are from 09:30 to 16:00 (6.5h)
+### **Приблизительная оценка**
+ * 100 символов, 1 млрд заявок в день.
+ * Обычные часы торгов — с 09:30 до 16:00 (6,5 ч).
  * QPS = 1bil / 6.5 / 3600 = 43000
- * Peak QPS = 5*QPS = 215000
- * Trading volume is significantly higher when the market opens
+ * Пиковый QPS = 5*QPS = 215000
+ * Объём торгов значительно выше при открытии рынка.
 
 ---
 
-## Step 2: Propose High-Level Design and Get Buy-In
+## Шаг 2: Предложим архитектуру верхнего уровня и согласуем её
 
-### **Business Knowledge 101**
-Let's discuss some basic concepts, related to an exchange.
+### **Основы работы биржи**
+Рассмотрим несколько основных понятий, связанных с работой биржи.
 
-A broker mediates interactions between an exchange and end users - Robinhood, Fidelity, etc.
+Брокер выступает посредником между биржей и конечными пользователями, например Robinhood или Fidelity.
 
-Institutional clients trade in large quantities using specialized trading software. They need specialized treatment.
-Eg order splitting when trading in large volumes to avoid impacting the market.
+Институциональные клиенты торгуют большими объёмами с помощью специализированного программного обеспечения и нуждаются в особом подходе.
+Например, крупную заявку можно разделить на несколько частей, чтобы не влиять на рынок.
 
-Types of orders:
- * Limit - buy or sell at a fixed price. It might not find a match immediately or it might be partially matched.
- * Market - doesn't specify a price. Executed at the current market price immediately.
+Типы заявок:
+ * Лимитная — купить или продать по фиксированной цене. Она может не найти встречную заявку сразу или исполниться частично.
+ * Рыночная — цена не указывается; заявка немедленно исполняется по текущей рыночной цене.
 
-Prices:
- * Bid - highest price a buyer is willing to buy a stock
- * Ask - lowest price a seller is willing to sell a stock
+Цены:
+ * Bid — наибольшая цена, по которой покупатель готов купить акцию.
+ * Ask — наименьшая цена, по которой продавец готов продать акцию.
 
-The US market has three tiers of price quotes - L1, L2, L3.
+На рынке США есть три уровня котировок: L1, L2 и L3.
 
-L1 market data contains best bid/ask prices and quantities:
-
-<div style="margin-left:3rem">
-    <img src="./images/l1-price.png" alt="l1-price" width="500" />
-</div>
-
-L2 includes more price levels:
+Данные рынка уровня L1 содержат лучшие цены bid/ask и соответствующие объёмы:
 
 <div style="margin-left:3rem">
-    <img src="./images/l2-price.png" alt="l2-price" width="500" />
+    <img src="./images/l1-price.png" alt="котировки уровня L1" width="500" />
 </div>
 
-L3 shows levels and queued quantity at each level:
+L2 включает больше ценовых уровней:
 
 <div style="margin-left:3rem">
-    <img src="./images/l3-price.png" alt="l3-price" width="500" />
+    <img src="./images/l2-price.png" alt="котировки уровня L2" width="500" />
 </div>
 
-A candlestick shows the market open and close price, as well as the highest and lowest prices in the given interval:
+L3 показывает уровни цен и объём заявок в очереди на каждом уровне:
 
 <div style="margin-left:3rem">
-    <img src="./images/candlestick.png" alt="candlestick" width="500" />
+    <img src="./images/l3-price.png" alt="котировки уровня L3" width="500" />
 </div>
 
-FIX is a protocol for exchanging securities transaction information, used by most vendors. Example securities transaction:
+Свеча показывает цены открытия и закрытия рынка, а также наибольшую и наименьшую цены за указанный интервал:
+
+<div style="margin-left:3rem">
+    <img src="./images/candlestick.png" alt="японская свеча" width="500" />
+</div>
+
+FIX — протокол обмена сведениями о сделках с ценными бумагами, используемый большинством поставщиков. Пример сообщения о сделке с ценными бумагами:
 ```
 8=FIX.4.2 | 9=176 | 35=8 | 49=PHLX | 56=PERS | 52=20071123-05:30:00.000 | 11=ATOMNOCCC9990900 | 20=3 | 150=E | 39=E | 55=MSFT | 167=CS | 54=1 | 38=15 | 40=2 | 44=15 | 58=PHLX EQUITY TESTING | 59=0 | 47=C | 32=0 | 31=0 | 151=15 | 14=0 | 6=0 | 10=128 |
 ```
 
-### **High-level design**
+### **Архитектура верхнего уровня**
 
 <div style="margin-left:3rem">
-    <img src="./images/high-level-design.png" alt="high-level-design" width="500" />
+    <img src="./images/high-level-design.png" alt="архитектура верхнего уровня" width="500" />
 </div>
 
-Trade flow:
- * Client places order via trading interface
- * Broker sends the order to the exchange
- * Order enters exchange through client gateway, which validates, rate limits, authenticates, etc. Order is forwarded to order manager.
- * Order manager performs risk checks based on rules set by the risk manager
- * After passing risk checks, order manager verifies there are sufficient funds in the wallet for the order
- * Order is sent to matching engine. When match is found, matching engine emits two executions (called fills) for buy and sell. Both orders are sequenced so that they're deterministic.
- * Executions are returned to the client.
+Поток сделок:
+ * Клиент размещает заявку через торговый интерфейс.
+ * Брокер отправляет заявку на биржу.
+ * Заявка поступает на биржу через клиентский шлюз, который проверяет её, ограничивает частоту запросов, выполняет аутентификацию и т. д. Затем заявка передаётся менеджеру заявок.
+ * Менеджер заявок выполняет проверки рисков по правилам, заданным менеджером рисков.
+ * После успешной проверки рисков менеджер заявок убеждается, что в кошельке достаточно средств для заявки.
+ * Заявка поступает в механизм сопоставления. При нахождении пары механизм сопоставления формирует два исполнения (fills) — для покупки и продажи. Обе заявки получают последовательные номера, обеспечивающие детерминированность.
+ * Данные об исполнении возвращаются клиенту.
 
-Market data flow (M1-M3):
- * matching engine generates a stream of executions, sent to the market data publisher
- * Market data publisher constructs the candlestick charts and sends them to the data service
- * Market data is stored in specialized storage for real-time analytics. Brokers connect to the data service for timely market data.
+Поток рыночных данных (M1-M3):
+ * Механизм сопоставления формирует поток исполнений и отправляет его издателю рыночных данных.
+ * Издатель рыночных данных строит графики японских свечей и отправляет их в сервис данных.
+ * Рыночные данные хранятся в специализированном хранилище для аналитики в реальном времени. Брокеры подключаются к сервису данных, чтобы своевременно получать рыночную информацию.
 
-Reporter flow (R1-R2):
- * reporter collects all necessary reporting fields from orders and executions and writes them to DB
- * reporting fields - client_id, price, quantity, order_type, filled_quantity, remaining_quantity
+Поток отчётности (R1-R2):
+ * Сервис отчётности собирает из заявок и исполнений все необходимые для отчётов поля и записывает их в БД.
+ * Поля отчётности: client_id, price, quantity, order_type, filled_quantity, remaining_quantity.
 
-Trading flow is on the critical path, whereas the rest of the flows are not, hence, latency requirements differ between them.
+Поток торговли находится на критическом пути, а остальные потоки — нет, поэтому требования к задержке для них различаются.
 
-#### Trading flow
-The trading flow is on the critical path, hence, it should be highly optimized for low latency.
+#### Поток торговли
+Поток торговли находится на критическом пути, поэтому его нужно тщательно оптимизировать для уменьшения задержки.
 
-The matching engine is at its heart, also called the cross engine. Primary responsibilities:
- * Maintain the order book for each symbol - a list of buy/sell orders for a symbol.
- * Match buy and sell orders - a match results in two executions (fills), with one each for the buy and sell sides. This function must be fast and accurate
- * Distribute the execution stream as market data
- * Matches must be produced in a deterministic order. Foundational for high availability
+В основе системы лежит механизм сопоставления, также называемый cross engine. Его основные обязанности:
+ * Поддерживать биржевой стакан для каждого символа — список заявок на покупку и продажу этого символа.
+ * Сопоставлять заявки на покупку и продажу: при сопоставлении формируются два исполнения (fills), по одному для каждой стороны. Эта функция должна быть быстрой и точной.
+ * Распространять поток исполнений в виде рыночных данных.
+ * Формировать совпадения в детерминированном порядке — это основа высокой доступности.
 
-Next is the sequencer - it is the key component making the matching engine deterministic by stamping each inbound order and outbound fill with a sequence ID.
+Следующий компонент — sequencer. Он обеспечивает детерминированную работу механизма сопоставления, присваивая каждой входящей заявке и каждому исходящему исполнению последовательный ID.
 
 <div style="margin-left:3rem">
     <img src="./images/sequencer.png" alt="sequencer" width="500" />
 </div>
 
-We stamp inbound orders and outbound fills for several reasons:
- * timeliness and fairness
- * fast recovery/replay
- * exactly-once guarantee
+Входящие заявки и исходящие исполнения нумеруются по нескольким причинам:
+ * своевременность и справедливость;
+ * быстрое восстановление и повторное воспроизведение;
+ * гарантия обработки ровно один раз.
 
-Conceptually, we could use Kafka as our sequencer since it's effectively an inbound and outbound message queue. However, we're going to implement it ourselves in order to achieve lower latency.
+Теоретически в качестве sequencer можно использовать Kafka, поскольку она фактически является очередью входящих и исходящих сообщений. Однако для уменьшения задержки мы реализуем его самостоятельно.
 
-The order manager manages the orders state. It also interacts with the matching engine - sending orders and receiving fills.
+Менеджер заявок управляет состоянием заявок. Он также взаимодействует с механизмом сопоставления: отправляет заявки и получает исполнения.
 
-The order manager's responsibilities:
- * Sends orders for risk checks - eg verifying user's trade volume is less than 1mil
- * Checks the order against the user wallet and verifies there are sufficient funds to execute it
- * It sends the order to the sequencer and on to the matching engine. To reduce bandwidth, only necessary order information is passed to the matching engine
- * Executions (fills) are received back from the sequencer, where they are then send to the brokers via the client gateway
+Обязанности менеджера заявок:
+ * Отправлять заявки на проверку рисков, например проверять, что объём торгов пользователя меньше 1 млн.
+ * Сверять заявку с кошельком пользователя и проверять, достаточно ли средств для её исполнения.
+ * Отправлять заявку в sequencer, а затем в механизм сопоставления. Для уменьшения трафика механизму сопоставления передаются только необходимые сведения о заявке.
+ * Получать исполнения (fills) от sequencer и отправлять их брокерам через клиентский шлюз.
 
-The main challenge with implementing the order manager is the state transition management. Event sourcing is one viable solution (discussed in deep dive).
+Главная сложность реализации менеджера заявок — управление переходами состояний. Одно из возможных решений — хранение событий (рассматривается далее).
 
-Finally, the client gateway receives orders from users and sends them to the order manager. Its responsibilities:
-
-<div style="margin-left:3rem">
-    <img src="./images/client-gateway.png" alt="client-gateway" width="500" />
-</div>
-
-Since the client gateway is on the critical path, it should stay lightweight.
-
-There can be multiple client gateways for different clients. Eg a colo engine is a trading engine server, rented by the broker in the exchange's data center:
+Наконец, клиентский шлюз получает заявки пользователей и отправляет их менеджеру заявок. Его обязанности:
 
 <div style="margin-left:3rem">
-    <img src="./images/client-gateways.png" alt="client-gateways" width="500" />
+    <img src="./images/client-gateway.png" alt="клиентский шлюз" width="500" />
 </div>
 
-#### Market data flow
-The market data publisher receives executions from the matching engine and builds the order book/candlestick charts from the execution stream.
+Поскольку клиентский шлюз находится на критическом пути, он должен оставаться лёгким.
 
-That data is sent to the data service, which is responsible for showing the aggregated data to subscribers:
+Для разных клиентов могут быть предусмотрены отдельные клиентские шлюзы. Например, colo engine — это сервер торгового механизма, который брокер арендует в центре обработки данных биржи:
 
 <div style="margin-left:3rem">
-    <img src="./images/market-data.png" alt="market-data" width="500" />
+    <img src="./images/client-gateways.png" alt="клиентские шлюзы" width="500" />
 </div>
 
-#### Reporting flow
-The reporter is not on the critical path, but it is an important component nevertheless.
+#### Поток рыночных данных
+Издатель рыночных данных получает исполнения от механизма сопоставления и строит биржевой стакан и графики японских свечей на основе потока исполнений.
+
+Эти данные отправляются в сервис данных, который показывает подписчикам агрегированную информацию:
 
 <div style="margin-left:3rem">
-    <img src="./images/reporting-flow.png" alt="reporting-flow" width="500" />
+    <img src="./images/market-data.png" alt="рыночные данные" width="500" />
 </div>
 
-It is responsible for trading history, tax reporting, compliance reporting, settlements, etc.
-Latency is not a critical requirement for the reporting flow. Accuracy and compliance are more important.
+#### Поток отчётности
+Сервис отчётности не находится на критическом пути, но всё равно является важным компонентом.
 
-### **API Design**
-Clients interact with the stock exchange via the brokers to place orders, view executions, market data, download historical data for analysis, etc.
+<div style="margin-left:3rem">
+    <img src="./images/reporting-flow.png" alt="поток отчётности" width="500" />
+</div>
 
-We use a RESTful API for communication between the client gateway and the brokers.
+Он отвечает за историю торгов, налоговую отчётность, отчёты о соблюдении нормативных требований, взаиморасчёты и т. д.
+Для потока отчётности задержка не является критически важным требованием. Гораздо важнее точность и соблюдение нормативных требований.
 
-For institutional clients, a proprietary protocol is used to satisfy their low-latency requirements.
+### **Проектирование API**
+Клиенты взаимодействуют с фондовой биржей через брокеров: размещают заявки, просматривают исполнения и рыночные данные, скачивают исторические данные для анализа и т. д.
 
-Create order:
+Для взаимодействия клиентского шлюза с брокерами используется RESTful API.
+
+Для институциональных клиентов используется собственный протокол, отвечающий их требованиям к низкой задержке.
+
+Создание заявки:
 ```
 POST /v1/order
 ```
 
-Parameters:
- * symbol - the stock symbol. String
- * side - buy or sell. String
- * price - the price of the limit order. Long
- * orderType - limit or market (we only support limit orders in our design). String
- * quantity - the quantity of the order. Long
+Параметры:
+ * symbol — биржевой символ акции. String.
+ * side — buy (покупка) или sell (продажа). String.
+ * price — цена лимитной заявки. Long.
+ * orderType — limit (лимитная) или market (рыночная) заявка (в нашей архитектуре поддерживаются только limit). String.
+ * quantity — объём заявки. Long.
 
-Response:
- * id - the ID of the order. Long
- * creationTime - the system creation time of the order. Long
- * filledQuantity - the quantity that has been successfully executed. Long
- * remainingQuantity - the quantity still to be executed. Long
- * status - new/canceled/filled. String
- * rest of the attributes are the same as the input parameters
+Ответ:
+ * id — ID заявки. Long.
+ * creationTime — время создания заявки в системе. Long.
+ * filledQuantity — успешно исполненный объём. Long.
+ * remainingQuantity — объём, который ещё предстоит исполнить. Long.
+ * status — new/canceled/filled. String.
+ * Остальные атрибуты совпадают с параметрами запроса.
 
-Get execution:
+Получение исполнения:
 ```
 GET /execution?symbol={:symbol}&orderId={:orderId}&startTime={:startTime}&endTime={:endTime}
 ```
 
-Parameters:
- * symbol - the stock symbol. String
- * orderId - the ID of the order. Optional. String
- * startTime - query start time in epoch \[11\]. Long
- * endTime - query end time in epoch. Long
+Параметры:
+ * symbol — биржевой символ акции. String.
+ * orderId — ID заявки. Необязательный параметр. String.
+ * startTime — начало периода запроса в формате epoch \[11\]. Long.
+ * endTime — конец периода запроса в формате epoch. Long.
 
-Response:
- * executions - array with each execution in scope (see attributes below). Array
- * id - the ID of the execution. Long
- * orderId - the ID of the order. Long
- * symbol - the stock symbol. String
- * side - buy or sell. String
- * price - the price of the execution. Long
- * orderType - limit or market. String
- * quantity - the filled quantity. Long
+Ответ:
+ * executions — массив всех исполнений, попадающих в заданный диапазон (см. атрибуты ниже). Array.
+ * id — ID исполнения. Long.
+ * orderId — ID заявки. Long.
+ * symbol — биржевой символ акции. String.
+ * side — buy (покупка) или sell (продажа). String.
+ * price — цена исполнения. Long.
+ * orderType — limit (лимитная) или market (рыночная) заявка. String.
+ * quantity — исполненный объём. Long.
 
-Get order book:
+Получение биржевого стакана:
 ```
 GET /marketdata/orderBook/L2?symbol={:symbol}&depth={:depth}
 ```
 
-Parameters:
- * symbol - the stock symbol. String
- * depth - order book depth per side. Int
+Параметры:
+ * symbol — биржевой символ акции. String.
+ * depth — глубина стакана для каждой стороны. Int.
 
-Response:
- * bids - array with price and size. Array
- * asks - array with price and size. Array
+Ответ:
+ * bids — массив с ценой и объёмом. Array.
+ * asks — массив с ценой и объёмом. Array.
 
-get candlesticks:
+Получение японских свечей:
 ```
 GET /marketdata/candles?symbol={:symbol}&resolution={:resolution}&startTime={:startTime}&endTime={:endTime}
 ```
 
-Parameters:
- * symbol - the stock symbol. String
- * resolution - window length of the candlestick chart in seconds. Long
- * startTime - start time of the window in epoch. Long
- * endTime - end time of the window in epoch. Long
+Параметры:
+ * symbol — биржевой символ акции. String.
+ * resolution — длина временного интервала графика в секундах. Long.
+ * startTime — начало интервала в формате epoch. Long.
+ * endTime — конец интервала в формате epoch. Long.
 
-Response:
- * candles - array with each candlestick data (attributes listed below). Array
- * open - open price of each candlestick. Double
- * close - close price of each candlestick. Double
- * high - high price of each candlestick. Double
- * low - low price of each candlestick. Double
+Ответ:
+ * candles — массив данных по каждой свече (атрибуты перечислены ниже). Array.
+ * open — цена открытия свечи. Double.
+ * close — цена закрытия свечи. Double.
+ * high — наибольшая цена свечи. Double.
+ * low — наименьшая цена свечи. Double.
 
-### **Data models**
-There are three main types of data in our exchange:
- * Product, order, execution
- * order book
- * candlestick chart
+### **Модели данных**
+На бирже есть три основных типа данных:
+ * Инструмент, заявка, исполнение.
+ * Биржевой стакан.
+ * График японских свечей.
 
-#### Product, order, execution
-Products describe the attributes of a traded symbol - product type, trading symbol, UI display symbol, etc.
+#### Инструмент, заявка, исполнение
+Инструменты описывают атрибуты торгуемого символа: тип инструмента, торговый символ, символ для отображения в интерфейсе и т. д.
 
-This data doesn't change frequently, it is primarily used for rendering in a UI.
+Эти данные меняются редко и в основном используются для отображения в интерфейсе.
 
-An order represents an instruction for a buy/sell order. Executions are outbound matched result.
+Заявка — это распоряжение на покупку или продажу. Исполнения — исходящий результат сопоставления заявок.
 
-Here's the data model:
-
-<div style="margin-left:3rem">
-    <img src="./images/product-order-execution-data-model.png" alt="product-order-execution-data-model" width="500" />
-</div>
-
-We encounter orders and executions in all of our three flows:
- * in the critical path, they are processed in-memory for high performance. They are stored and recovered from the sequencer.
- * The reporter writes orders and executions to the database for reporting use-cases
- * Executions are forwarded to market data to reconstruct the order book and candlestick chart
-
-#### Order book
-The order book is a list of buy/sell orders for an instrument, organized by price level.
-
-An efficient data structure for this model, needs to satisfy:
- * constant lookup time - getting volume at price level or between price levels
- * fast add/execute/cancel operations
- * query best bid/ask price
- * iterate through price levels
-
-Example order book execution:
+Модель данных:
 
 <div style="margin-left:3rem">
-    <img src="./images/order-book-execution.png" alt="order-book-execution" width="500" />
+    <img src="./images/product-order-execution-data-model.png" alt="модель данных инструментов, заявок и исполнений" width="500" />
 </div>
 
-After fulfilling this large order, the price increases as the bid/ask spread widens.
+Заявки и исполнения используются во всех трёх потоках:
+ * На критическом пути они обрабатываются в памяти для высокой производительности. Их хранение и восстановление обеспечивает sequencer.
+ * Сервис отчётности записывает заявки и исполнения в базу данных для подготовки отчётов.
+ * Исполнения передаются в систему рыночных данных для восстановления биржевого стакана и графика японских свечей.
 
-Example order book implementation in pseudo code:
+#### Биржевой стакан
+Биржевой стакан — это список заявок на покупку и продажу инструмента, упорядоченный по ценовым уровням.
+
+Эффективная структура данных для этой модели должна обеспечивать:
+ * постоянное время поиска объёма на ценовом уровне или между уровнями;
+ * быстрое добавление, исполнение и отмену заявок;
+ * получение лучшей цены bid/ask;
+ * обход ценовых уровней.
+
+Пример исполнения заявки из биржевого стакана:
+
+<div style="margin-left:3rem">
+    <img src="./images/order-book-execution.png" alt="исполнение заявки из биржевого стакана" width="500" />
+</div>
+
+После исполнения этой крупной заявки цена растёт, поскольку спред bid/ask увеличивается.
+
+Пример реализации биржевого стакана в псевдокоде:
 ```
 class PriceLevel{
     private Price limitPrice;
@@ -330,19 +330,19 @@ class OrderBook {
 }
 ```
 
-For a more efficient implementation, we can use a doubly-linked list instead of a standard list:
- * Placing a new order is O(1), because we're adding an order to the tail of the list.
- * Matching an order is O(1), because we are deleting an order from the head
- * Canceling an order means deleting an order from the order book. We utilize `orderMap` for O(1) lookup and O(1) delete (due to the `Order` having a reference to the previous element in the list).
+Для более эффективной реализации можно использовать двусвязный список вместо обычного:
+ * Размещение новой заявки выполняется за O(1), поскольку она добавляется в конец списка.
+ * Сопоставление заявки выполняется за O(1), поскольку она удаляется из начала списка.
+ * Отмена заявки требует удалить её из биржевого стакана. Для поиска за O(1) и удаления за O(1) используется `orderMap` (у `Order` есть ссылка на предыдущий элемент списка).
 
 <div style="margin-left:3rem">
-    <img src="./images/order-book-impl.png" alt="order-book-impl" width="500" />
+    <img src="./images/order-book-impl.png" alt="реализация биржевого стакана" width="500" />
 </div>
 
-This data structure is also used in the market data services to reconstruct the order book.
+Эта структура данных также используется в сервисах рыночных данных для восстановления биржевого стакана.
 
-#### Candlestick chart
-The candlestick data is calcualated within the market data services based on processing orders in a time interval:
+#### График японских свечей
+Данные свечей рассчитываются в сервисах рыночных данных на основании обработки заявок за временной интервал:
 ```
 class Candlestick {
     private long openPrice;
@@ -359,140 +359,140 @@ class CandlestickChart {
 }
 ```
 
-Some optimizations to avoid consuming too much memory:
- * Use pre-allocated ring buffers to hold sticks to reduce the allocation number
- * Limit the number of sticks in memory and persist the rest to disk
+Чтобы не расходовать слишком много памяти, можно применить следующие оптимизации:
+ * Использовать заранее выделенные кольцевые буферы для хранения свечей, чтобы уменьшить число выделений памяти.
+ * Ограничить число свечей в памяти, а остальные сохранять на диск.
 
-We'll use an in-memory columnar database (eg KDB) for real-time analytics. After market close, data is persisted in historical database.
+Для аналитики в реальном времени будем использовать колоночную базу данных в памяти (например, KDB). После закрытия рынка данные сохраняются в исторической базе данных.
 
 ---
 
-## Step 3: Design Deep Dive
-One interesting thing to be aware of about modern exchanges is that unlike most other software, they typically run everything on one gigantic server.
+## Шаг 3: Подробный разбор архитектуры
+Интересная особенность современных бирж: в отличие от большинства других систем, они часто запускают все компоненты на одном мощном сервере.
 
-Let's explore the details.
+Рассмотрим это подробнее.
 
-### **Performance**
-For an exchange, it is very important to have good overall latency for all percentiles.
+### **Производительность**
+Для биржи очень важно обеспечить низкую общую задержку на всех перцентилях.
 
-How can we reduce latency?
- * Reduce the number of tasks on the critical path
- * Shorten the time spent on each task by reducing network/disk usage and/or reducing task execution time
+Как уменьшить задержку?
+ * Сократить число задач на критическом пути.
+ * Уменьшить время выполнения каждой задачи, сократив использование сети и диска и/или ускорив выполнение задачи.
 
-To achieve the first goal, we're stripped the critical path from all extraneous responsibility, even logging is removed to achieve optimal latency.
+Для достижения первой цели мы убрали с критического пути все лишние обязанности; ради минимальной задержки отключили даже логирование.
 
-If we follow the original design, there are several bottlenecks - network latency between services and disk usage of the sequencer.
+В исходной архитектуре есть несколько узких мест: сетевая задержка между сервисами и операции с диском у sequencer.
 
-With such a design we can achieve tens of milliseconds end to end latency. We want to achieve tens of microseconds instead.
+При такой архитектуре сквозную задержку можно снизить до десятков миллисекунд. Наша цель — добиться десятков микросекунд.
 
-Hence, we'll put everything on one server and processes are going to communicate via mmap as an event store:
-
-<div style="margin-left:3rem">
-    <img src="./images/mmap-bus.png" alt="mmap-bus" width="500" />
-</div>
-
-Another optimization is using an application loop (while loop executing mission-critical tasks), pinned to the same CPU to avoid context switching:
+Поэтому разместим все компоненты на одном сервере, а процессы будут взаимодействовать через mmap, используемый как хранилище событий:
 
 <div style="margin-left:3rem">
-    <img src="./images/application-loop.png" alt="application-loop" width="500" />
+    <img src="./images/mmap-bus.png" alt="шина взаимодействия на основе mmap" width="500" />
 </div>
 
-Another side effect of using an application loop is that there is no lock contention - multiple threads fighting for the same resource.
-
-Let's now explore how mmap works - it is a UNIX syscall, which maps a file on disk to an application's memory.
-
-One trick we can use is creating the file in `/dev/shm`, which stands for "shared memory". Hence, we have no disk access at all.
-
-### **Event sourcing**
-Event sourcing is discussed in-depth in the [digital wallet chapter](../chapter28). Reference it for all the details.
-
-In a nutshell, instead of storing current states, we store immutable state transitions:
+Ещё одна оптимизация — использовать цикл приложения (цикл while для выполнения критически важных задач), закреплённый за одним и тем же CPU, чтобы избежать переключения контекста:
 
 <div style="margin-left:3rem">
-    <img src="./images/event-sourcing.png" alt="event-sourcing" width="500" />
+    <img src="./images/application-loop.png" alt="цикл приложения" width="500" />
 </div>
 
- * On the left - traditional schema
- * On the right - event source schema
+Дополнительное преимущество цикла приложения — отсутствие конкуренции за блокировки, когда несколько потоков борются за один ресурс.
 
-Here's how our design looks like thus far:
+Рассмотрим, как работает mmap: это системный вызов UNIX, отображающий файл на диске в память приложения.
+
+Можно создать файл в `/dev/shm`, что означает «shared memory» (разделяемая память). В таком случае доступ к диску вообще не потребуется.
+
+### **Хранение событий (Event Sourcing)**
+Подробно хранение событий рассматривается в [главе о цифровом кошельке](../chapter28). Обратитесь к ней за дополнительными сведениями.
+
+Если кратко, вместо хранения текущих состояний мы сохраняем неизменяемые переходы состояний:
 
 <div style="margin-left:3rem">
-    <img src="./images/design-so-far.png" alt="design-so-far" width="500" />
+    <img src="./images/event-sourcing.png" alt="хранение событий" width="500" />
 </div>
 
- * external domain interacts with our client gateway using the FIX protocol
- * Order manager receives the new order event, validates it and adds it to its internal state. Order is then sent to matching core
- * If order is matched, the `OrderFilledEvent` is generated and sent over mmap
- * Other components subscribe to the event store and do their part of the processing
+ * Слева — традиционная схема.
+ * Справа — схема хранения событий.
 
-One additional optimizations - all components hold a copy of the order manager, which is packaged as a library to avoid extra calls for managing orders
-
-The sequencer in this design, changes to not be an event store, but be a single writer, sequencing events before forwarding them to the event store:
+На этом этапе наша архитектура выглядит так:
 
 <div style="margin-left:3rem">
-    <img src="./images/sequencer-deep-dive.png" alt="sequencer-deep-dive" width="500" />
+    <img src="./images/design-so-far.png" alt="текущий вариант архитектуры" width="500" />
 </div>
 
-### **High availability**
-We aim for 99.99% availability - only 8.64s of downtime per day.
+ * Внешний домен взаимодействует с клиентским шлюзом по протоколу FIX.
+ * Менеджер заявок получает событие о новой заявке, проверяет его и добавляет заявку во внутреннее состояние. Затем заявка передаётся в ядро сопоставления.
+ * Если заявка сопоставлена, создаётся событие `OrderFilledEvent` и отправляется через mmap.
+ * Другие компоненты подписываются на хранилище событий и выполняют свою часть обработки.
 
-To achieve that, we have to identify single-point-of-failures in the exchange architecture:
- * setup backup instances of critical services (eg matching engine) which are on stand-by
- * aggressively automate failure detection and failover to the backup instance
+Ещё одна оптимизация: каждый компонент содержит копию менеджера заявок, упакованного в библиотеку, чтобы избежать дополнительных вызовов при управлении заявками.
 
-Stateless services such as the client gateway can easily be horizontally scaled by adding more servers.
-
-For stateful components, we can process inbound events, but not publish outbound events if we're not the leader:
+В этой архитектуре sequencer перестаёт быть хранилищем событий и становится единственным компонентом записи: он упорядочивает события, прежде чем передавать их в хранилище событий:
 
 <div style="margin-left:3rem">
-    <img src="./images/leader-election.png" alt="leader-election" width="500" />
+    <img src="./images/sequencer-deep-dive.png" alt="подробная схема sequencer" width="500" />
 </div>
 
-To detect the primary replica being down, we can send heartbeats to detect that its non-functional.
+### **Высокая доступность**
+Целевая доступность — 99,99%, что соответствует всего 8,64 с простоя в день.
 
-This mechanism only works within the boundary of a single server. 
-If we want to extend it, we can setup an entire server as hot/warm replica and failover in case of failure.
+Для этого необходимо определить единые точки отказа в архитектуре биржи:
+ * Настроить резервные экземпляры критически важных сервисов (например, механизма сопоставления), работающие в режиме ожидания.
+ * Максимально автоматизировать обнаружение отказов и переключение на резервный экземпляр.
 
-To replicate the event store across the replicas, we can use reliable UDP for faster communication.
+Stateless-сервисы, например клиентский шлюз, легко масштабировать горизонтально, добавляя серверы.
 
-### **Fault tolerance**
-What if even the warm instances go down? It is a low probability event but we should be ready for it.
-
-Large tech companies tackle this problem by replicating core data to data centers in multiple cities to mitigate eg natural disasters.
-
-Questions to consider:
- * If the primary instance is down, how and when do we failover to the backup instance?
- * How do we choose the leader among the backup instances?
- * What is the recovery time needed (RTO - recovery time objective)?
- * What functionalities need to be recovered? Can our system operate under degraded conditions?
-
-How to address these:
- * System can be down due to a bug (affecting primary and replicas), we can use chaos engineering to surface edge-cases and disastrous outcomes like these
- * Initially though, we could perform failovers manually until we gather sufficient knowledge about the system's failure modes
- * leader-election can be used (eg Raft) to determine which replica becomes the leader in the event of the primary going down
-
-Example of how replication works across different servers:
+Stateful-компоненты могут обрабатывать входящие события, но не публиковать исходящие, если они не являются лидером:
 
 <div style="margin-left:3rem">
-    <img src="./images/replication-across-servers.png" alt="replication-across-servers" width="500" />
+    <img src="./images/leader-election.png" alt="выбор лидера" width="500" />
 </div>
 
-Example leader-election terms:
+Чтобы обнаружить отказ основной реплики, можно отправлять heartbeat-сигналы и определять, что она перестала работать.
+
+Этот механизм работает только в пределах одного сервера.
+Чтобы расширить его, можно настроить целый сервер как горячую или тёплую реплику и переключаться на него при сбое.
+
+Для репликации хранилища событий между репликами можно использовать надёжный UDP, обеспечивающий более быструю связь.
+
+### **Отказоустойчивость**
+Что делать, если откажут даже тёплые экземпляры? Вероятность такого события мала, но к нему нужно быть готовыми.
+
+Крупные технологические компании решают эту проблему, реплицируя основные данные в центры обработки данных в разных городах, чтобы снизить последствия, например, стихийных бедствий.
+
+Вопросы для рассмотрения:
+ * Как и когда переключаться на резервный экземпляр при отказе основного?
+ * Как выбрать лидера среди резервных экземпляров?
+ * Какое время восстановления требуется (RTO — целевое время восстановления)?
+ * Какие функции необходимо восстановить? Может ли система работать в ограниченном режиме?
+
+Как решать эти проблемы:
+ * Система может выйти из строя из-за ошибки, затронувшей и основной экземпляр, и реплики. Для выявления таких крайних случаев и катастрофических последствий можно использовать chaos engineering.
+ * Поначалу переключения можно выполнять вручную, пока мы не накопим достаточно знаний о сценариях отказа системы.
+ * Для определения реплики, которая станет лидером после отказа основного экземпляра, можно использовать выбор лидера, например на основе Raft.
+
+Пример работы репликации между разными серверами:
 
 <div style="margin-left:3rem">
-    <img src="./images/leader-election-terms.png" alt="leader-election-terms" width="500" />
+    <img src="./images/replication-across-servers.png" alt="репликация между серверами" width="500" />
 </div>
 
-For details on how Raft works, [check this out](https://thesecretlivesofdata.com/raft/)
+Пример терминов выбора лидера:
 
-Finally, we need to also consider loss tolerance - how much data can we lose before things get critical?
-This will determine how often we backup our data.
+<div style="margin-left:3rem">
+    <img src="./images/leader-election-terms.png" alt="термины при выборе лидера" width="500" />
+</div>
 
-For a stock exchange, data loss is unacceptable, so we have to backup data often and rely on raft's replication to reduce probability of data loss.
+Подробное описание работы Raft см. [здесь](https://thesecretlivesofdata.com/raft/).
 
-### **Matching algorithms**
-Slight detour on how matching works via pseudo code:
+Наконец, нужно учитывать допустимую потерю данных: сколько данных можно потерять до возникновения критической ситуации?
+От этого зависит частота резервного копирования.
+
+Для фондовой биржи потеря данных недопустима, поэтому необходимо часто создавать резервные копии и полагаться на репликацию Raft, снижающую вероятность потери данных.
+
+### **Алгоритмы сопоставления**
+Кратко рассмотрим работу сопоставления на псевдокоде:
 ```
 Context handleOrder(OrderBook orderBook, OrderEvent orderEvent) {
     if (orderEvent.getSequenceId() != nextSequence) {
@@ -546,64 +546,64 @@ Context match(OrderBook book, Order order) {
 }
 ```
 
-This matching algorithm uses the FIFO algorithm for determining which orders at a price level to match.
+Этот алгоритм сопоставления использует FIFO, чтобы определять порядок исполнения заявок на одном ценовом уровне.
 
-### **Determinism**
-Functional determinism is guaranteed via the sequencer technique we used.
+### **Детерминированность**
+Функциональная детерминированность обеспечивается с помощью sequencer.
 
-The actual time when the event happens doesn't matter:
-
-<div style="margin-left:3rem">
-    <img src="./images/determinism.png" alt="determinism" width="500" />
-</div>
-
-Latency determinism is something we have to track. We can calculate it based on monitoring 99 or 99.99 percentile latency.
-
-Things which can cause latency spikes are garbage collector events in eg Java.
-
-### **Market data publisher optimizations**
-The market data publisher receives matched results from the matching engine and rebuilds the order book and candlestick charts based on them.
-
-We only keep part of the candlesticks as we don't have infinite memory. Clients can choose how much granular info they want. More granular info might require a higher price:
+Точное время, когда происходит событие, не имеет значения:
 
 <div style="margin-left:3rem">
-    <img src="./images/market-data-publisher.png" alt="market-data-publisher" width="500" />
+    <img src="./images/determinism.png" alt="детерминированность" width="500" />
 </div>
 
-A ring buffer (aka circular buffer) is a fixed-size queue with the head connected to the tail. The space is preallocated to avoid allocations. The data structure is also lock-free.
+Детерминированность задержки необходимо отслеживать. Её можно оценивать, измеряя задержку на 99-м или 99,99-м перцентиле.
 
-Another technique to optimize the ring buffer is padding, which ensures the sequence number is never in a cache line with anything else.
+К скачкам задержки могут приводить, например, запуски сборщика мусора в Java.
 
-### **Distribution fairness of market data and multicast**
-We need to ensure subscribers receive the data at the same time since if one receives data before another, that gives them crucial market insight, which they can use to manipulate the market.
+### **Оптимизация издателя рыночных данных**
+Издатель рыночных данных получает результаты сопоставления от механизма сопоставления и на их основе восстанавливает биржевой стакан и графики японских свечей.
 
-To achieve this, we can use multicast using reliable UDP when publishing data to subscribers.
+Мы храним не все свечи, поскольку объём памяти ограничен. Клиенты могут выбирать требуемую детализацию данных. За более подробные данные может взиматься более высокая плата:
 
-Data can be transported via the internet in three ways:
- * Unicast - one source, one destination
- * Broadcast - one source to entire subnetwork
- * Multicast - one source to a set of hosts on different subnetworks
+<div style="margin-left:3rem">
+    <img src="./images/market-data-publisher.png" alt="издатель рыночных данных" width="500" />
+</div>
 
-In theory, by using multicast, all subscribers should receive the data at the same time.
+Кольцевой буфер — это очередь фиксированного размера, в которой начало соединено с концом. Память выделяется заранее, чтобы избежать дополнительных выделений. Эта структура данных также не использует блокировки.
 
-UDP, however, is unreliable and the data might not reach everyone. It can be enhanced with retransmissions, however.
+Ещё один способ оптимизировать кольцевой буфер — padding, гарантирующий, что номер последовательности не будет находиться в одной строке кэша с другими данными.
 
-### **Colocation**
-Exchanges offer brokers the ability to colocate their servers in the same data center as the exchange.
+### **Справедливое распределение рыночных данных и multicast**
+Необходимо обеспечить одновременное получение данных подписчиками: если один получит их раньше другого, он получит важную рыночную информацию, которую можно использовать для манипулирования рынком.
 
-This reduces the latency drastically and can be considered a VIP service.
+Для этого при публикации данных подписчикам можно использовать multicast поверх надёжного UDP.
 
-### **Network Security**
-DDoS is a challenge for exchanges as there are some internet-facing services. Here's our options:
- * Isolate public services and data from private services, so DDoS attacks don't impact the most important clients
- * Use a caching layer to store data which is infrequently updated
- * Harden URLs against DDoS, eg prefer `https://my.website.com/data/recent` vs. `https://my.website.com/data?from=123&to=456`, because the former is more cacheable
- * Effective allowlist/blocklist mechanism is needed.
- * Rate limiting can be used to mitigate DDoS
+Данные можно передавать через интернет тремя способами:
+ * Unicast — от одного источника одному получателю.
+ * Broadcast — от одного источника всей подсети.
+ * Multicast — от одного источника группе узлов в разных подсетях.
+
+Теоретически при использовании multicast все подписчики должны получать данные одновременно.
+
+Однако UDP ненадёжен, поэтому данные могут дойти не до всех. Надёжность можно повысить повторной передачей.
+
+### **Размещение серверов рядом с биржей (colocation)**
+Биржи позволяют брокерам размещать свои серверы в том же центре обработки данных, что и биржа.
+
+Это значительно снижает задержку и может считаться VIP-услугой.
+
+### **Безопасность сети**
+DDoS-атаки представляют проблему для бирж, поскольку некоторые сервисы доступны из интернета. Возможны следующие меры:
+ * Изолировать общедоступные сервисы и данные от внутренних, чтобы DDoS-атаки не затрагивали наиболее важных клиентов.
+ * Использовать слой кэширования для редко обновляемых данных.
+ * Защитить URL от DDoS, например предпочесть `https://my.website.com/data/recent` вместо `https://my.website.com/data?from=123&to=456`, поскольку первый вариант лучше кэшируется.
+ * Настроить эффективный механизм списков разрешённых и заблокированных адресов.
+ * Использовать ограничение частоты запросов для смягчения DDoS-атак.
 
 ---
 
-## Step 4: Wrap Up
-Other interesting notes:
- * not all exchanges rely on putting everything on one big server, but some still do
- * modern exchanges rely more on cloud infrastructure and also on automatic market makers (AMM) to avoid maintaining an order book
+## Шаг 4: Итоги
+Другие интересные замечания:
+ * Не все биржи размещают всё на одном большом сервере, но некоторые по-прежнему используют такой подход.
+ * Современные биржи чаще полагаются на облачную инфраструктуру, а также на автоматических маркет-мейкеров (AMM), чтобы не поддерживать биржевой стакан.

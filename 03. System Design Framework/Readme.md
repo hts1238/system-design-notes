@@ -1,115 +1,114 @@
-# Chapter 3: A Framework for System Design Interviews
+# Глава 3: Структура собеседования по проектированию систем
 
-## Introduction
-System design interviews are a key part of the hiring process, simulating real-life problem-solving scenarios. These interviews evaluate not just technical skills but also collaboration, communication, and the ability to handle ambiguous requirements.
+## Введение
+Собеседования по проектированию систем — важная часть найма, имитирующая реальные ситуации решения проблем. На них оценивают не только технические навыки, но и умение сотрудничать и общаться, а также работать с неоднозначными требованиями.
 
-This chapter introduces a **4-step framework** for navigating system design interviews effectively.
-
----
-
-## Step 1: Understand the Problem and Establish Design Scope
-
-### Key Objectives
-- Clarify requirements and assumptions.
-- Avoid jumping into solutions prematurely.
-- Showcase critical thinking by asking good questions.
-
-### Approach
-- **Ask Clarifying Questions:**
-  - What are the most important features?
-  - What scale does the system need to handle?
-  - Are we building for web, mobile, or both?
-  - Are there existing technologies or constraints?
-
-- **Document Assumptions:** Write assumptions on a whiteboard or paper for reference.
-
-### Example
-**Problem:** Design a news feed system.  
-**Questions:**
-- Is it a mobile app, web app, or both?
-- How many friends can a user have?
-- Should the feed include images and videos?
-- Is the feed sorted by reverse chronological order?
+В этой главе представлена **структура из 4 шагов**, которая поможет эффективно проходить собеседования по проектированию систем.
 
 ---
 
-## Step 2: Propose High-Level Design and Get Buy-In
+## Шаг 1: Понять проблему и определить границы проектирования
 
-### Key Objectives
-- Develop a high-level architecture.
-- Collaborate with the interviewer to refine the design.
+### Ключевые задачи
+- Прояснить требования и допущения.
+- Не переходить к решениям преждевременно.
+- Продемонстрировать критическое мышление, задавая хорошие вопросы.
 
-### Approach
-- **Draft a Blueprint:**
-  - Use box diagrams for key components (e.g., clients, APIs, databases, caches, CDNs).
-  - Treat the interviewer as a teammate to refine the design.
+### Подход
+- **Задавайте уточняющие вопросы:**
+  - Какие функции наиболее важны?
+  - Какую нагрузку должна выдерживать система?
+  - Мы разрабатываем решение для веба, мобильных устройств или обеих платформ?
+  - Есть ли ограничения или требования к используемым технологиям?
 
-- **Perform Back-of-the-Envelope Calculations:**
-  - Ensure the design can handle the scale constraints.
+- **Фиксируйте допущения:** записывайте их на доске или бумаге, чтобы к ним можно было обратиться.
 
-- **Walk Through Use Cases:** Identify edge cases and validate design assumptions.
-
-### Example
-For a news feed system, divide the design into:
-1. **Feed Publishing Flow:** Writing posts into databases and populating friends' feeds.
-2. **Feed Retrieval Flow:** Aggregating and displaying friends' posts in reverse chronological order.
-
----
-
-## Step 3: Design Deep Dive
-
-### Key Objectives
-- Dive into critical components.
-- Showcase depth of understanding and adaptability.
-
-### Approach
-- **Prioritize Key Components:** Focus on areas most relevant to the problem.
-- **Discuss Bottlenecks:** Identify potential performance issues and propose solutions.
-- **Balance Detail:** Avoid over-engineering or unnecessary deep dives.
-
-### Example Topics
-- **URL Shortener:** Focus on hash function design.
-- **Chat System:** Explore latency reduction and online/offline status handling.
-- **News Feed System:** Examine feed publishing and retrieval processes.
+### Пример
+**Задача:** спроектировать систему новостной ленты.  
+**Вопросы:**
+- Это мобильное приложение, веб-приложение или и то и другое?
+- Сколько друзей может быть у пользователя?
+- Должна ли лента содержать изображения и видео?
+- Сортируется ли лента в обратном хронологическом порядке?
 
 ---
 
-## Step 4: Wrap-Up
+## Шаг 2: Предложить высокоуровневый дизайн и согласовать его
 
-### Key Objectives
-- Highlight areas for improvement.
-- Recap the design and discuss follow-ups.
+### Ключевые задачи
+- Разработать высокоуровневую архитектуру.
+- Совместно с интервьюером доработать дизайн.
 
-### Approach
-- **Identify Bottlenecks:** Discuss potential limitations and scaling strategies.
-- **Summarize Design:** Recap major design decisions and trade-offs.
-- **Propose Enhancements:**
-  - How to scale from 1 million to 10 million users.
-  - Error handling for server failures or network issues.
+### Подход
+- **Создайте схему:**
+  - Изобразите ключевые компоненты в виде блоков (например, клиенты, API, базы данных, кэши, CDN).
+  - Работайте с интервьюером как с напарником, вместе улучшая дизайн.
 
----
+- **Выполните приблизительные расчёты:**
+  - Убедитесь, что дизайн выдержит заданный масштаб.
 
-## Best Practices
+- **Разберите сценарии использования:** выявите граничные случаи и проверьте допущения, заложенные в дизайн.
 
-### Dos
-- **Ask Questions:** Clarify ambiguities before diving into solutions.
-- **Communicate:** Share your thought process with the interviewer.
-- **Iterate with the Interviewer:** Treat them as a collaborator.
-- **Show Flexibility:** Suggest alternative approaches and refine your design.
-- **Focus on Critical Components:** Prioritize key parts of the system.
-
-### Don’ts
-- **Avoid Premature Solutions:** Don’t design before understanding the requirements.
-- **Don’t Go Silent:** Communicate regularly during the process.
-- **Avoid Over-Engineering:** Focus on practical, scalable solutions.
+### Пример
+Для системы новостной ленты разделите дизайн на следующие потоки:
+1. **Публикация в ленте:** запись публикаций в базы данных и добавление их в ленты друзей.
+2. **Получение ленты:** сбор и отображение публикаций друзей в обратном хронологическом порядке.
 
 ---
 
-## Time Management
+## Шаг 3: Детальная проработка дизайна
 
-### Suggested Time Allocation (for 45-Minute Interviews):
-1. **Understand Problem and Scope:** 3–10 minutes
-2. **High-Level Design and Buy-In:** 10–15 minutes
-3. **Deep Dive:** 10–25 minutes
-4. **Wrap-Up:** 3–5 minutes
+### Ключевые задачи
+- Детально рассмотреть критически важные компоненты.
+- Продемонстрировать глубину понимания и гибкость.
 
+### Подход
+- **Расставьте приоритеты для компонентов:** сосредоточьтесь на наиболее важных для задачи областях.
+- **Обсудите узкие места:** выявите потенциальные проблемы производительности и предложите решения.
+- **Соблюдайте баланс детализации:** избегайте излишнего усложнения и ненужного погружения в детали.
+
+### Примеры тем
+- **Сокращатель URL:** сосредоточьтесь на проектировании хеш-функции.
+- **Система чата:** рассмотрите снижение задержки и обработку статусов «в сети»/«не в сети».
+- **Система новостной ленты:** изучите процессы публикации и получения элементов ленты.
+
+---
+
+## Шаг 4: Подведение итогов
+
+### Ключевые задачи
+- Отметить области, которые можно улучшить.
+- Подвести итоги дизайна и обсудить дальнейшие шаги.
+
+### Подход
+- **Выявите узкие места:** обсудите потенциальные ограничения и стратегии масштабирования.
+- **Обобщите дизайн:** подведите итоги основных проектных решений и компромиссов.
+- **Предложите улучшения:**
+  - Как масштабироваться с 1 миллиона до 10 миллионов пользователей.
+  - Как обрабатывать сбои серверов и проблемы с сетью.
+
+---
+
+## Лучшие практики
+
+### Что следует делать
+- **Задавайте вопросы:** проясняйте неоднозначности, прежде чем переходить к решениям.
+- **Общайтесь:** рассказывайте интервьюеру о ходе своих рассуждений.
+- **Работайте итеративно с интервьюером:** воспринимайте его как соавтора.
+- **Будьте гибкими:** предлагайте альтернативные подходы и дорабатывайте дизайн.
+- **Сосредоточьтесь на критически важных компонентах:** расставляйте приоритеты для ключевых частей системы.
+
+### Чего не следует делать
+- **Не предлагайте решения преждевременно:** не приступайте к проектированию, пока не поняли требования.
+- **Не замыкайтесь:** регулярно общайтесь в ходе собеседования.
+- **Не усложняйте без необходимости:** сосредоточьтесь на практичных и масштабируемых решениях.
+
+---
+
+## Распределение времени
+
+### Рекомендуемое распределение времени (для собеседования длительностью 45 минут):
+1. **Понимание задачи и определение границ:** 3–10 минут
+2. **Высокоуровневый дизайн и согласование:** 10–15 минут
+3. **Детальная проработка:** 10–25 минут
+4. **Подведение итогов:** 3–5 минут

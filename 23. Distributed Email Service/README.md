@@ -1,93 +1,93 @@
-# Chapter 23: Distributed Email Service
+# Глава 23: Распределенный почтовый сервис
 
-## Introduction
+## Введение
 
-We'll design a **distributed email service**, similar to **Gmail** in this chapter.
+В этой главе мы спроектируем **распределенный почтовый сервис**, похожий на **Gmail**.
 
-In 2020, **Gmail** had 1.8bil active users, while **Outlook** had 400mil users worldwide.
-
----
-
-## Step 1: Understand the Problem and Establish Design Scope
-
-- C: How many users use the system?
-- I: 1bil users
-- C: I think following features are important - auth, send/receive email, fetch email, filter emails, search email, anti-spam protection.
-- I: Good list. Don't worry about auth for now.
-- C: How do users connect \w email servers?
-- I: Typically, email clients connect via SMTP, POP, IMAP, but we'll use HTTP for this problem.
-- C: Can emails have attachments?
-- I: Yes
-
-### **Non-functional requirements**
-
-- **Reliability** - we shouldn't lose data
-- **Availability** - We should use replication to prevent single points of failure. We should also tolerate partial system failures.
-- **Scalability** - As userbase grows, our system should be able to handle them.
-- **Flexibility and extensibility** - system should be flexible and easy to extend with new features. One of the reasons we chose HTTP over SMTP/other mail protocols.
-
-### **Back-of-the-envelope estimation**
-
-- **1bil users**
-- Assuming one person sends 10 emails per day -> **100k emails per second**.
-- Assuming one person receives 40 emails per day and each email on average has 50kb metadata -> **730pb storage per year**.
-- Assuming 20% of emails have storage attachments and average size is 500kb -> **1,460pb per year**.
+В 2020 году у **Gmail** было 1,8 млрд активных пользователей, а у **Outlook** — 400 млн пользователей по всему миру.
 
 ---
 
-## Step 2: Propose High-Level Design and Get Buy-In
+## Шаг 1: Понимание задачи и определение области проектирования
 
-### **Email knowledge 101**
+- К: Сколько пользователей будет у системы?
+- И: 1 млрд пользователей
+- К: Думаю, важны следующие функции: аутентификация, отправка и получение писем, загрузка писем, фильтрация, поиск и защита от спама.
+- И: Хороший список. Пока не будем рассматривать аутентификацию.
+- К: Как пользователи подключаются к почтовым серверам?
+- И: Обычно почтовые клиенты подключаются через SMTP, POP, IMAP, но в этой задаче мы будем использовать HTTP.
+- К: Могут ли письма содержать вложения?
+- И: Да
 
-There are various protocols used for sending and receiving emails:
-- **SMTP** - standard protocol for sending emails from one server to another.
-- **POP** - standard protocol for receiving and downloading emails from a remote mail server to a local client. Once retrieved, emails are deleted from remote server.
-- **IMAP** - similar to POP, it is used for receiving and downloading emails from a remote server, but it keeps the emails on the server-side.
-- **HTTPS** - not technically an email protocol, but it can be used for web-based email clients.
+### **Нефункциональные требования**
 
-Apart from the mailing protocol, there are some DNS records we need to configure for our email server - the MX records:
+- **Надежность**: мы не должны терять данные
+- **Доступность**: следует использовать репликацию, чтобы исключить единые точки отказа. Система также должна выдерживать частичные сбои.
+- **Масштабируемость**: система должна справляться с ростом числа пользователей.
+- **Гибкость и расширяемость**: систему должно быть легко адаптировать и дополнять новыми функциями. Это одна из причин, по которой мы выбрали HTTP вместо SMTP и других почтовых протоколов.
+
+### **Приблизительная оценка**
+
+- **1 млрд пользователей**
+- Если предположить, что один человек отправляет 10 писем в день, получим **100 тыс. писем в секунду**.
+- Если предположить, что один человек получает 40 писем в день, а метаданные каждого письма в среднем занимают 50kb, потребуется **730pb хранилища в год**.
+- Если предположить, что 20% писем содержат вложения со средним размером 500kb, потребуется **1,460pb в год**.
+
+---
+
+## Шаг 2: Предложение высокоуровневого проекта и согласование
+
+### **Основы электронной почты**
+
+Для отправки и получения электронной почты используются различные протоколы:
+- **SMTP** — стандартный протокол отправки писем с одного сервера на другой.
+- **POP** — стандартный протокол получения и загрузки писем с удаленного почтового сервера на локальный клиент. После загрузки письма удаляются с удаленного сервера.
+- **IMAP** — похож на POP и используется для получения и загрузки писем с удаленного сервера, но письма остаются на сервере.
+- **HTTPS** — формально не является почтовым протоколом, но может использоваться веб-клиентами электронной почты.
+
+Помимо почтового протокола, для почтового сервера нужно настроить DNS-записи — записи MX:
 
 <div style="margin-left:3rem">
-    <img src="./images/dns-lookup.png" alt="dns-lookup" width="500" />
+    <img src="./images/dns-lookup.png" alt="поиск MX-записи в DNS" width="500" />
 </div>
 
-Email attachments are sent base64-encoded and there is usually a size limit of 25mb on most mail services.
-This is configurable and varies from individual to corporate accounts.
+Вложения электронной почты передаются в кодировке base64, а в большинстве почтовых сервисов обычно установлен лимит размера в 25mb.
+Этот параметр можно настроить; ограничение зависит от того, используется ли личная или корпоративная учетная запись.
 
-### **Traditional mail servers**
+### **Традиционные почтовые серверы**
 
-Traditional mail servers work well when there are a limited number of users, connected to a single server.
+Традиционные почтовые серверы хорошо работают, если число пользователей невелико и они подключаются к одному серверу.
 
 <div style="margin-left:3rem">
-    <img src="./images/traditional-mail-server.png" alt="traditional-mail-server" width="500" />
+    <img src="./images/traditional-mail-server.png" alt="традиционный почтовый сервер" width="500" />
 </div>
 
-- Alice logs into her Outlook email and presses "send". Email is sent to Outlook mail server. Communication is via SMTP.
-- Outlook server queries DNS to find MX record for gmail.com and transfers the email to their servers. Communication is via SMTP.
-- Bob fetches emails from his gmail server via IMAP/POP.
+- Алиса входит в свою почту Outlook и нажимает «Отправить». Письмо поступает на почтовый сервер Outlook. Связь осуществляется по SMTP.
+- Сервер Outlook запрашивает DNS, чтобы найти запись MX для gmail.com, и передает письмо на серверы Gmail. Связь осуществляется по SMTP.
+- Боб загружает письма со своего сервера Gmail по IMAP/POP.
 
-In traditional mail servers, emails were stored on the local file system. Every email was a separate file.
+В традиционных почтовых серверах письма хранились в локальной файловой системе. Каждое письмо было отдельным файлом.
 
 <div style="margin-left:3rem">
-    <img src="./images/local-dir-storage.png" alt="local-dir-storage" width="500" />
+    <img src="./images/local-dir-storage.png" alt="хранение писем в локальном каталоге" width="500" />
 </div>
 
-As the scale grew, disk I/O became a bottleneck. Also, it doesn't satisfy our high availability and reliability requirements.
-Disks can be damaged and server can go down.
+С ростом масштаба дисковый ввод-вывод стал узким местом. Кроме того, такой подход не отвечает нашим требованиям к высокой доступности и надежности.
+Диски могут выйти из строя, а сервер — отключиться.
 
-### **Distributed mail servers**
+### **Распределенные почтовые серверы**
 
-Distributed mail servers are designed to support modern use-cases and solve modern scalability issues.
+Распределенные почтовые серверы предназначены для поддержки современных сценариев использования и решения проблем масштабирования.
 
-These servers can still support IMAP/POP for native email clients and SMTP for mail exchange across servers.
+Такие серверы по-прежнему могут поддерживать IMAP/POP для нативных почтовых клиентов и SMTP для обмена письмами между серверами.
 
-But for rich web-based mail clients, a RESTful API over HTTP is typically used.
+Однако для полнофункциональных веб-клиентов обычно используется RESTful API поверх HTTP.
 
-Example APIs:
-- `POST /v1/messages` - sends a message to recipients in To, Cc, Bcc headers.
-- `GET /v1/folders` - returns all folders of an email account
+Примеры API:
+- `POST /v1/messages` - отправляет письмо адресатам, указанным в заголовках To, Cc, Bcc.
+- `GET /v1/folders` - возвращает все папки учетной записи электронной почты
 
-Example response:
+Пример ответа:
 
 ```
 [{id: string        Unique folder identifier.
@@ -99,10 +99,10 @@ Example response:
 }]
 ```
 
-- `GET /v1/folders/{:folder_id}/messages` - returns all messages under a folder \w pagination
-- `GET /v1/messages/{:message_id}` - get all information about a particular message
+- `GET /v1/folders/{:folder_id}/messages` - возвращает все письма в папке с постраничной навигацией
+- `GET /v1/messages/{:message_id}` - возвращает всю информацию о конкретном письме
 
-Example response:
+Пример ответа:
 
 ```
 {
@@ -115,122 +115,122 @@ Example response:
 }
 ```
 
-Here's the high-level design of the distributed mail server:
+Высокоуровневая архитектура распределенного почтового сервера:
 
 <div style="margin-left:3rem">
-    <img src="./images/high-level-architecture.png" alt="high-level-architecture" width="500" />
+    <img src="./images/high-level-architecture.png" alt="высокоуровневая архитектура распределенного почтового сервера" width="500" />
 </div>
 
-- **Webmail** - users use web browsers to send/receive emails
-- **Web servers** - public-facing request/response services used to manage login, signup, user profile, etc.
-- **Real-time servers** - Used for pushing new email updates to clients in real-time. We use websockets for real-time communication but fallback to long-polling for older browsers that don't support them.
-- **Metadata db** - stores email metadata such as subject, body, from, to, etc.
-- **Attachment store** - Object store (eg Amazon S3), suitable for storing large files.
-- **Distributed cache** - We can cache recent emails in Redis to improve UX.
-- **Search store** - distributed document store, used for supporting full-text searches.
+- **Веб-почта** - пользователи отправляют и получают письма через веб-браузер
+- **Веб-серверы** - общедоступные сервисы запросов и ответов для управления входом, регистрацией, профилем пользователя и т. д.
+- **Серверы реального времени** - передают клиентам уведомления о новых письмах в реальном времени. Для связи в реальном времени используются веб-сокеты, а для старых браузеров без их поддержки предусмотрен резервный вариант с длительным опросом.
+- **БД метаданных** - хранит метаданные писем, например тему, текст, отправителя, получателей и т. д.
+- **Хранилище вложений** - объектное хранилище (например, Amazon S3), подходящее для хранения больших файлов.
+- **Распределенный кэш** - для улучшения пользовательского опыта в Redis можно кэшировать недавние письма.
+- **Поисковое хранилище** - распределенное хранилище документов для поддержки полнотекстового поиска.
 
-Here's what the email sending flow looks like:
+Процесс отправки письма выглядит следующим образом:
 
 <div style="margin-left:3rem">
-    <img src="./images/email-sending-flow.png" alt="email-sending-flow" width="500" />
+    <img src="./images/email-sending-flow.png" alt="процесс отправки электронной почты" width="500" />
 </div>
 
-- User writes an email and presses "send". Email is sent to load balancer.
-- Load balancer rate limits excessive mail sends and routes to one of the web servers.
-- Web servers do basic email validation (eg email size) and short-circuits outbound flow if domain is same as sender. But does spam check first.
-- If basic validation passes, email is sent to message queue (attachment is referenced from object store)
-- If basic validation fails, email is sent to error queue
-- SMTP outgoing workers pull messages from outgoing queue, do spam/virus checks and route to destination mail server.
-- Email is stored in the "Sent Emails" folder
+- Пользователь пишет письмо и нажимает «Отправить». Письмо поступает на балансировщик нагрузки.
+- Балансировщик ограничивает частоту чрезмерной отправки писем и направляет запрос на один из веб-серверов.
+- Веб-серверы выполняют базовую проверку письма (например, его размера) и пропускают исходящий поток, если домен совпадает с доменом отправителя. Однако сначала выполняется проверка на спам.
+- Если базовая проверка пройдена, письмо помещается в очередь сообщений (вложение указывается ссылкой на объектное хранилище)
+- Если базовая проверка не пройдена, письмо помещается в очередь ошибок
+- Исходящие SMTP-обработчики извлекают письма из очереди, проверяют их на спам и вирусы и направляют на почтовый сервер получателя.
+- Письмо сохраняется в папке «Отправленные»
 
-We need to also monitor size of outgoing message queue. Growing too large might indicate a problem:
-- Recipient's mail server is unavailable. We can retry sending the email at a later time using exponential backoff.
-- Not enough consumers to handle the load, we might have to scale the consumers.
+Нужно также отслеживать размер очереди исходящих сообщений. Ее чрезмерный рост может указывать на проблему:
+- Почтовый сервер получателя недоступен. Можно повторить отправку позже, используя экспоненциальную задержку.
+- Потребителей недостаточно для обработки нагрузки, поэтому может потребоваться их масштабировать.
 
-Here's the email receiving flow:
+Процесс получения письма:
 
 <div style="margin-left:3rem">
-    <img src="./images/email-receiving-flkow.png" alt="email-receiving-flow" width="500" />
+    <img src="./images/email-receiving-flkow.png" alt="процесс получения электронной почты" width="500" />
 </div>
 
-- Incoming emails arrive at the SMTP load balancer. Mails are distributed to SMTP servers, where mail acceptance policy is done (eg invalid emails are directly discarded).
-- If attachment of email is too large, we can put it in object store (s3).
-- Mail processing workers do preliminary checks, after which mails are forwarded to storage, cache, object store and real-time servers.
-- Offline users get their new emails once they come back online via HTTP API.
+- Входящие письма поступают на SMTP-балансировщик нагрузки. Письма распределяются между SMTP-серверами, где применяется политика приема почты (например, недействительные письма сразу отклоняются).
+- Если вложение слишком велико, его можно поместить в объектное хранилище (S3).
+- Обработчики писем выполняют предварительные проверки, после чего письма передаются в хранилище, кэш, объектное хранилище и на серверы реального времени.
+- Офлайн-пользователи получают новые письма через HTTP API, когда снова выходят в сеть.
 
 ---
 
-## Step 3: Design Deep Dive
+## Шаг 3: Подробный разбор проекта
 
-Let's now go deeper into some of the components.
+Теперь подробнее рассмотрим некоторые компоненты.
 
-### **Metadata database**
+### **База данных метаданных**
 
-Here are some of the characteristics of email metadata:
-- headers are usually small and frequently accessed
-- Body size ranges from small to big, but is typically read once
-- Most mail operations are isolated to a single user - eg fetching email, marking as read, searching.
-- Data recency impacts data usage. Users typically read only recent emails
-- Data has high-reliability requirements. Data loss is unacceptable.
+Вот некоторые характеристики метаданных электронной почты:
+- заголовки обычно небольшие и часто запрашиваются
+- размер текста может быть разным, но обычно его читают один раз
+- большинство операций с почтой ограничено одним пользователем: например, загрузка письма, отметка о прочтении и поиск.
+- Давность данных влияет на частоту использования. Обычно пользователи читают только недавние письма
+- К данным предъявляются высокие требования по надежности. Потеря данных недопустима.
 
-At gmail/outlook scale, the database is typically custom made to reduce input/output operations per second (IOPS).
+В масштабах Gmail/Outlook базу данных обычно разрабатывают специально, чтобы уменьшить число операций ввода-вывода в секунду (IOPS).
 
-Let's consider what database options we have:
-- **Relational database** - we can build indexes for headers and body, but these DBs are typically optimized for small chunks of data.
-- **Distributed object store** - this can be a good option for backup storage, but can't efficiently support searching/marking as read/etc.
-- **NoSQL** - Google BigTable is used by gmail, but it's not open-sourced.
+Рассмотрим возможные варианты баз данных:
+- **Реляционная база данных** - можно создать индексы по заголовкам и тексту письма, но такие БД обычно оптимизированы для небольших фрагментов данных.
+- **Распределенное объектное хранилище** - подходит для резервного хранения, но не может эффективно поддерживать поиск, отметку о прочтении и подобные операции.
+- **NoSQL** - в Gmail используется Google BigTable, но ее исходный код не открыт.
 
-Based on above analysis, very few existing solutions seems to fit our needs perfectly.
-In an interview setting, it's infeasible to design a new distributed database solution, but important to mention characteristics:
-- Single column can be a single-digit MB
-- Strong data consistency
-- Designed to reduce disk I/O
-- Highly available and fault tolerant
-- Should be easy to create incremental backups
+Судя по этому анализу, мало готовых решений полностью удовлетворяют нашим требованиям.
+На собеседовании нереалистично проектировать новую распределенную базу данных, но важно упомянуть ее характеристики:
+- Один столбец может занимать несколько MB
+- Строгая согласованность данных
+- Оптимизация для уменьшения дискового ввода-вывода
+- Высокая доступность и отказоустойчивость
+- Простое создание инкрементальных резервных копий
 
-In order to partition the data, we can use the `user_id` as a partition key, so that one user's data is stored on a single shard.
-This prohibits us from sharing an email with multiple users, but this is not a requirement for this interview.
+Для разделения данных можно использовать `user_id` в качестве ключа партиционирования, чтобы данные одного пользователя хранились в одном шарде.
+Это не позволит делиться письмами с несколькими пользователями, но для этой задачи на собеседовании такая функция не требуется.
 
-Let's define the tables:
-- Primary key consists of partition key (data distribution) and clustering key (sorting data)
-- Queries we need to support - get all folders for a user, display all emails for a folder, create/get/delete an email, fetch read/unread email, get conversation threads (bonus)
+Определим таблицы:
+- Первичный ключ состоит из ключа партиционирования (распределение данных) и кластерного ключа (сортировка данных)
+- Нужно поддерживать запросы: получить все папки пользователя, отобразить все письма в папке, создать/получить/удалить письмо, загрузить прочитанные/непрочитанные письма, получить цепочки переписки (дополнительная задача)
 
-Legend for tables to follow:
-
-<div style="margin-left:3rem">
-    <img src="./images/legend.png" alt="legend" width="500" />
-</div>
-
-Here is the folders table:
+Условные обозначения для следующих таблиц:
 
 <div style="margin-left:3rem">
-    <img src="./images/folders-table.png" alt="folders-table" width="500" />
+    <img src="./images/legend.png" alt="условные обозначения" width="500" />
 </div>
 
-emails table:
+Таблица папок:
 
 <div style="margin-left:3rem">
-    <img src="./images/emails-table.png" alt="emails-table" width="500" />
+    <img src="./images/folders-table.png" alt="таблица папок" width="500" />
 </div>
 
-- email_id is timeuuid which allows sorting based on timestamp when email was created
-
-Attachments are stored in a separate table, identified by filename:
+Таблица писем:
 
 <div style="margin-left:3rem">
-    <img src="./images/attachments.png" alt="attachments" width="500" />
+    <img src="./images/emails-table.png" alt="таблица писем" width="500" />
 </div>
 
-Supporting fetchin read/unread emails is easy in a traditional relational database, but not in Cassandra, since filtering on non-partition/clustering key is prohibited.
-One workaround to fetch all emails in a folder and filter in-memory, but that doesn't work well for a big-enough application.
+- email_id имеет тип timeuuid, который позволяет сортировать письма по времени их создания
 
-What we can do is denormalize the emails table into read/unread emails tables:
+Вложения хранятся в отдельной таблице и идентифицируются по имени файла:
 
 <div style="margin-left:3rem">
-    <img src="./images/read-unread-emails.png" alt="read-unread-emails" width="500" />
+    <img src="./images/attachments.png" alt="таблица вложений" width="500" />
 </div>
 
-In order to support conversation threads, we can include some headers, which mail clients interpret and use to reconstruct a conversation thread:
+Поддержать загрузку прочитанных и непрочитанных писем просто в традиционной реляционной базе данных, но не в Cassandra, поскольку фильтрация по полям, не являющимся ключом партиционирования или кластерным ключом, запрещена.
+Один из обходных вариантов — загрузить все письма из папки и отфильтровать их в памяти, но для достаточно крупного приложения это не подходит.
+
+Можно денормализовать таблицу писем, разделив ее на таблицы прочитанных и непрочитанных писем:
+
+<div style="margin-left:3rem">
+    <img src="./images/read-unread-emails.png" alt="таблицы прочитанных и непрочитанных писем" width="500" />
+</div>
+
+Чтобы поддержать цепочки переписки, можно включить заголовки, которые почтовые клиенты интерпретируют и используют для восстановления цепочки:
 
 ```
 {
@@ -242,84 +242,84 @@ In order to support conversation threads, we can include some headers, which mai
 }
 ```
 
-Finally, we'll trade availability for consistency for our distributed database, since it is a hard requirement for this problem.
+Наконец, для нашей распределенной базы данных мы предпочтём согласованность вместо доступности, поскольку это строгое требование задачи.
 
-Hence, in the event of a failover or network parititon, sync/update actions will be briefly unavailable to impacted users.
+Поэтому при переключении на резервный узел или разделении сети операции синхронизации и обновления будут ненадолго недоступны затронутым пользователям.
 
-### **Email deliverability**
+### **Доставка электронной почты**
 
-It is easy to setup a server to send emails, but getting the email to a receiver's inbox is hard, due to spam-protection algorithms.
+Настроить сервер для отправки писем легко, но доставить письмо во входящие получателя сложно из-за алгоритмов защиты от спама.
 
-If we just setup a new mail server and start sending mails through it, our emails will probably end up in the spam folder.
+Если просто настроить новый почтовый сервер и начать отправлять через него письма, они, вероятно, попадут в папку со спамом.
 
-Here's what we can do to prevent that:
-- **Dedicated IPs** - use dedicated IPs for sending emails, otherwise, recipient servers will not trust you.
-- **Classify emails** - avoid sending marketing emails from the same servers to prevent more important email to be classified as spam
-- **Warm up your IP address** slowly to build a good reputation with big email providers. It takes 2 to 6 weeks to warm up a new IP
-- **Ban spammers** quickly to not deteriorate your reputation
-- **Feedback processing** - setup a feedback loop with ISPs to keep track of complaint rate and ban spam accounts quickly.
-- **Email authentication** - use common techniques to combat phishing such as Sender Policy Framework, DomainKeys Identified Mail, etc.
+Чтобы этого избежать, можно:
+- **Выделенные IP-адреса** - отправлять письма с выделенных IP-адресов, иначе серверы получателей не будут им доверять.
+- **Классифицировать письма** - не отправлять маркетинговые письма с тех же серверов, чтобы более важные письма не считались спамом
+- **Постепенно прогревать IP-адрес**, чтобы сформировать хорошую репутацию у крупных почтовых провайдеров. Прогрев нового IP занимает от 2 до 6 недель
+- **Быстро блокировать спамеров**, чтобы не испортить репутацию
+- **Обрабатывать обратную связь** - настроить канал обратной связи с ISP, отслеживать долю жалоб и быстро блокировать спам-аккаунты.
+- **Аутентификация электронной почты** - применять распространенные методы борьбы с фишингом, например Sender Policy Framework, DomainKeys Identified Mail и т. д.
 
-You don't need to remember all of this. Just know that building a good mail server requires a lot of domain knowledge.
+Запоминать все это не нужно. Достаточно понимать, что для создания хорошего почтового сервера требуется глубокое знание предметной области.
 
-### **Search**
+### **Поиск**
 
-Searching includes doing a full-text search based on email contents or more advanced queries based on from, to, subject, unread, etc filters.
+Поиск включает полнотекстовый поиск по содержимому писем, а также более сложные запросы с фильтрами по отправителю, получателю, теме, статусу прочтения и т. д.
 
-One characteristic of email search is that it is local to the user and it has more writes than reads, because we need to re-index it on each operation, but users rarely use the search tab.
+Особенность поиска по электронной почте в том, что он выполняется в пределах одного пользователя и порождает больше записей, чем чтений, поскольку индекс нужно обновлять после каждой операции. Однако пользователи редко используют вкладку поиска.
 
-Let's compare google search with email search:
+Сравним поиск Google с поиском по электронной почте:
 
-|               | Scope                | Sorting                               | Accuracy                                          |
+|               | Область поиска       | Сортировка                            | Точность                                          |
 |---------------|----------------------|---------------------------------------|---------------------------------------------------|
-| Google search | The whole internet   | Sort by relevance                     | Indexing takes some time, so not instant results. |
-| Email search  | User's own email box | Sort by attributes eg time, date, etc | Indexing should be quick and results accurate.    |
+| Поиск Google  | Весь интернет        | По релевантности                      | Индексация занимает время, поэтому результаты появляются не сразу. |
+| Поиск почты   | Почтовый ящик пользователя | По атрибутам, например времени, дате и т. д. | Индексация должна быть быстрой, а результаты — точными. |
 
-To achieve this search functionality, one option is to use an Elasticsearch cluster. We can use `user_id` as the partition key to group data under the same node:
+Для реализации поиска можно использовать кластер Elasticsearch. В качестве ключа партиционирования можно взять `user_id`, чтобы группировать данные на одном узле:
 
 <div style="margin-left:3rem">
     <img src="./images/elasticsearch.png" alt="elasticsearch" width="500" />
 </div>
 
-Mutating operations are async via Kafka in order to decouple services from the reindexing flow.
-Actually searching for data happens synchronously.
+Операции изменения данных выполняются асинхронно через Kafka, чтобы отделить сервисы от процесса переиндексации.
+Сам поиск данных выполняется синхронно.
 
-Elasticsearch is one of the most popular search-engine databases and supports full-text search for emails very well.
+Elasticsearch — одна из самых популярных поисковых баз данных, хорошо поддерживающая полнотекстовый поиск по письмам.
 
-Alternatively, we can attempt to develop our own custom search solution to meet our specific requirements.
+В качестве альтернативы можно попробовать разработать собственное поисковое решение, удовлетворяющее нашим особым требованиям.
 
-Designing such a system is out of scope. One of the core challenges when building it is to optimize it for write-heavy workloads.
+Проектирование такой системы выходит за рамки этой главы. Одна из главных сложностей ее создания — оптимизация для интенсивной записи.
 
-To achieve that, we can use Log-Structured Merge-Trees (LSM) to structure the index data on disk. Write path is optimized for sequential writes only.
-This technique is used in Cassandra, BigTable and RocksDB.
+Для этого можно использовать Log-Structured Merge-Trees (LSM) для организации индексных данных на диске. Путь записи оптимизирован только для последовательной записи.
+Эта технология применяется в Cassandra, BigTable и RocksDB.
 
-Its core idea is to store data in-memory until a predefined threshold is reached, after which it is merged in the next layer (disk):
+Основная идея — хранить данные в памяти до достижения заданного порога, а затем объединять их на следующем уровне (диске):
 
 <div style="margin-left:3rem">
-    <img src="./images/lsm-tree.png" alt="lsm-tree" width="500" />
+    <img src="./images/lsm-tree.png" alt="LSM-дерево" width="500" />
 </div>
 
-Main trade-offs between the two approaches:
-- Elasticsearch scales to some extent, whereas a custom search engine can be fine-tuned for the email use-case, allowing it to scale further.
-- Elasticsearch is a separate service we need to maintain, alongside the metadata store. A custom solution can be the datastore itself.
-- Elasticsearch is an off-the-shelf solution, whereas the custom search engine would require significant engineering effort to build.
+Основные компромиссы между двумя подходами:
+- Elasticsearch масштабируется до определенного предела, тогда как собственную поисковую систему можно тонко настроить для работы с электронной почтой и масштабировать дальше.
+- Elasticsearch — отдельный сервис, который придется поддерживать наряду с хранилищем метаданных. Собственное решение может быть самим хранилищем данных.
+- Elasticsearch — готовое решение, тогда как создание собственной поисковой системы потребует значительных инженерных усилий.
 
-### **Scalability and availability**
+### **Масштабируемость и доступность**
 
-Since individual user operations don't collide with other users, most components can be independently scaled.
+Поскольку операции одного пользователя не пересекаются с операциями других пользователей, большинство компонентов можно масштабировать независимо.
 
-To ensure high availability, we can also use a multi-DC setup with leader-folower failover in case of failures:
+Для обеспечения высокой доступности можно также использовать конфигурацию с несколькими ЦОД и переключением с ведущего узла на ведомый при сбоях:
 
 <div style="margin-left:3rem">
-    <img src="./images/multi-dc-example.png" alt="multi-dc-example" width="500" />
+    <img src="./images/multi-dc-example.png" alt="пример конфигурации с несколькими ЦОД" width="500" />
 </div>
 
 ---
 
-## Step 4: Wrap Up
+## Шаг 4: Итоги
 
-Additional talking points:
-- **Fault tolerance** - Many parts of the system could fail. It is worthwhile how we'd handle node failures.
-- **Compliance** - PII needs to be stored in a reasonable way, given Europe's GDPR laws.
-- **Security** - email encryption, phishing protection, safe browsing, etc.
-- **Optimizations** - eg preventing duplication of the same attachments, sent multiple times by different users.
+Дополнительные темы для обсуждения:
+- **Отказоустойчивость** - многие части системы могут выйти из строя. Стоит обсудить, как обрабатывать сбои узлов.
+- **Соответствие требованиям** - с учетом европейского законодательства GDPR персональные данные нужно хранить надлежащим образом.
+- **Безопасность** - шифрование электронной почты, защита от фишинга, безопасный просмотр и т. д.
+- **Оптимизация** - например, предотвращение дублирования одинаковых вложений, отправленных несколько раз разными пользователями.

@@ -1,129 +1,129 @@
-# Chapter 16: Proximity Service
+# Глава 16: Сервис поиска поблизости
 
-## Introduction
-A **proximity service** is designed to find nearby locations, such as restaurants, hotels, gas stations, and other businesses. This functionality is used in applications like **Google Maps** and **Yelp** to help users discover places within a defined radius.
+## Введение
+**Сервис поиска поблизости** предназначен для поиска находящихся рядом мест: ресторанов, отелей, автозаправочных станций и других предприятий. Эта функция используется в приложениях, таких как **Google Maps** и **Yelp**, чтобы пользователи могли находить места в заданном радиусе.
 
 
-## Step 1: Understanding the Problem and Establishing Scope
+## Шаг 1: Понимание задачи и определение границ
 
-### **Functional Requirements**
-1. **Search for businesses** based on user location (latitude, longitude) and search radius.
-2. **Allow business owners** to add, update, or delete businesses (not real-time).
-3. **Provide detailed business information** when requested.
+### **Функциональные требования**
+1. **Поиск предприятий** по местоположению пользователя (широта, долгота) и радиусу поиска.
+2. **Возможность для владельцев предприятий** добавлять, изменять и удалять сведения о предприятиях (не в реальном времени).
+3. **Предоставление подробной информации о предприятии** по запросу.
 
-### **Non-Functional Requirements**
-- **Low latency**: Users should get quick responses.
-- **Data privacy**: Compliance with GDPR and CCPA regulations.
-- **High availability**: Handle peak-hour spikes in busy locations.
+### **Нефункциональные требования**
+- **Низкая задержка**: пользователи должны быстро получать ответы.
+- **Конфиденциальность данных**: соблюдение требований GDPR и CCPA.
+- **Высокая доступность**: обработка пиковых нагрузок в оживлённых местах.
 
-### **Back-of-the-Envelope Estimation**
-- **100 million daily active users**.
-- **200 million businesses** in the system.
-- **Search QPS Calculation**:
-  - Users make **5 searches per day**.
-  - **Search QPS** = (100M × 5) / 86,400 ≈ **5,000 QPS**.
+### **Оценка порядка величин**
+- **100 миллионов ежедневно активных пользователей**.
+- **200 миллионов предприятий** в системе.
+- **Расчёт QPS поиска**:
+  - Пользователи выполняют **5 поисковых запросов в день**.
+  - **QPS поиска** = (100M × 5) / 86,400 ≈ **5,000 QPS**.
 
 ---
 
-## Step 2: High-Level Design
+## Шаг 2: Проектирование на высоком уровне
 
-### **API Design**
-#### **Search Nearby Businesses**
+### **Проектирование API**
+#### **Поиск предприятий поблизости**
 GET /v1/search/nearby
 
-- **Request Parameters**:
-  - `latitude`: User’s location latitude.
-  - `longitude`: User’s location longitude.
-  - `radius`: Search radius (default: 5000m).
+- **Параметры запроса**:
+  - `latitude`: широта местоположения пользователя.
+  - `longitude`: долгота местоположения пользователя.
+  - `radius`: радиус поиска (по умолчанию: 5000m).
 
-#### **Business APIs**
-| API Endpoint                     | Description                                      |
+#### **API предприятий**
+| Конечная точка API               | Описание                                         |
 |-----------------------------------|--------------------------------------------------|
-| `GET /v1/businesses/{id}`         | Fetch detailed business info                    |
-| `POST /v1/businesses`             | Add a new business                              |
-| `PUT /v1/businesses/{id}`         | Update business details                         |
-| `DELETE /v1/businesses/{id}`      | Remove a business from the system               |
+| `GET /v1/businesses/{id}`         | Получить подробную информацию о предприятии     |
+| `POST /v1/businesses`             | Добавить предприятие                            |
+| `PUT /v1/businesses/{id}`         | Обновить сведения о предприятии                 |
+| `DELETE /v1/businesses/{id}`      | Удалить предприятие из системы                  |
 
 
-### **Data Model**
-- Since the read volume is high because two features are very commonly used, a realtional database such as MySQL is a good fit.
-  - Search for nearby businesses
-  - View the detailed information of a business
+### **Модель данных**
+- Поскольку объём чтения велик из-за частого использования двух функций, хорошо подойдёт реляционная база данных, например MySQL.
+  - Поиск предприятий поблизости
+  - Просмотр подробной информации о предприятии
 
-### **Data Schema**
-- Key Database tables are the business table and the geospatial index table
-- The business table consists the detailed information about a business.
+### **Схема данных**
+- Основные таблицы базы данных — таблица предприятий и таблица геопространственного индекса.
+- В таблице предприятий хранится подробная информация о предприятиях.
 
-### **High-Level System Architecture**
-The system comprises of two parts: Location based service (LBS) and business related service.
+### **Архитектура системы на высоком уровне**
+Система состоит из двух частей: сервиса определения местоположения (LBS) и сервиса предприятий.
 
 <div style="margin-left:3rem">
-    <img src="./images/high-level-design.png" alt="HLD" width="400" />
+    <img src="./images/high-level-design.png" alt="Архитектура высокого уровня" width="400" />
 </div>
 
-- **Location-Based Service (LBS)**: 
-  - Processes location-based search queries.
-  - Read-heavy service with no write requests.
-  - QPS is high especially during peak hours in dense areas and the system is stateless.
-- **Business Service**: Deals with two types of requests.
-  - Business owners create, update or delete businesses.
-  - Customers view detailed information about a business.
-- **Load Balancer**: Routes traffic to LBS and Business service.
-- **Database Cluster**: 
-  - Uses **primary-replica architecture** for read-heavy workloads.
-  - There might be some discrepancy between data read b/w data read by LBS and data written by by primary database.
-  - This incosistency is not an issue beacuase the business information is not updated in real-time.
+- **Сервис определения местоположения (LBS)**:
+  - Обрабатывает поисковые запросы, связанные с местоположением.
+  - Сервис с интенсивным чтением, не выполняющий запросов на запись.
+  - QPS особенно высок в часы пик в густонаселённых районах; сервис не хранит состояние.
+- **Сервис предприятий**: обрабатывает два типа запросов.
+  - Владельцы предприятий создают, изменяют и удаляют сведения о предприятиях.
+  - Клиенты просматривают подробную информацию о предприятии.
+- **Балансировщик нагрузки**: направляет трафик в LBS и сервис предприятий.
+- **Кластер баз данных**:
+  - Использует **архитектуру «первичный узел — реплики»** для нагрузки с интенсивным чтением.
+  - Данные, прочитанные LBS, могут несколько отличаться от данных, записанных в первичную базу данных.
+  - Это несоответствие не является проблемой, поскольку сведения о предприятиях обновляются не в реальном времени.
 
 
 ---
 
-## Step 3: Algorithms for Fetching Nearby Businesses
+## Шаг 3: Алгоритмы поиска предприятий поблизости
 
-### **Option 1: Two-Dimensional Search (Naive Approach)**
+### **Вариант 1: двумерный поиск (наивный подход)**
 
 <div style="margin-left:3rem">
     <img src="./images/2d-search.png" alt="2D" width="250" />
 </div>
 
-The most intuitive way is to draw a circle with pre-defined radius and find all the businesses within the circle.
+Самый интуитивный способ — задать окружность с определённым радиусом и найти все предприятия внутри неё.
 
-**SQL Query:**
+**SQL-запрос:**
 ```
 SELECT business_id, latitude, longitude
 FROM business
 WHERE (latitude BETWEEN :lat - radius AND :lat + radius)
 AND (longitude BETWEEN :long - radius AND :long + radius);
 ```
-**Problems:**
-- **Inefficient**: Requires scanning the entire database.
-- **Limited by one-dimensional indexes** (latitude/longitude).
+**Проблемы:**
+- **Низкая эффективность**: требуется сканировать всю базу данных.
+- **Ограничение одномерными индексами** (широта/долгота).
 
-A potiential improvement is to build index on logitude and latitude columns, alhtough this is slighlty better but still vry slow.
+Возможное улучшение — создать индексы по столбцам долготы и широты. Это немного повысит производительность, но поиск всё равно будет очень медленным.
 
-### Better Approach
-- The problem with last approach is that the database index can only increase search speed in one dimension.
-- An optimal apporach is to reprsent the two-dimensional data into one dimension using geospatial indexing.
-  - Hash: Even grid, Geo Hash
-  - Tree: Quadtree, Google S2, RTree
+### Более эффективный подход
+- Недостаток предыдущего подхода в том, что индекс базы данных может ускорить поиск только в одном измерении.
+- Оптимальный подход — представить двумерные данные в одном измерении с помощью геопространственной индексации.
+  - Хеш: равномерная сетка, Geo Hash
+  - Дерево: Quadtree, Google S2, RTree
 
   <div style="margin-left:3rem">
     <img src="./images/geospatial-index-types.png" alt="2D" width="500" />
   </div>
 
 
-### **Option 2: Evenly Divided Grid**
+### **Вариант 2: равномерно разделённая сетка**
 
   <div style="margin-left:3rem">
-    <img src="./images/even-grid.png" alt="Even Grid" width="400" />
+    <img src="./images/even-grid.png" alt="Равномерная сетка" width="400" />
   </div>
 
-- **Divides the world into fixed-size grids**.
-- **Issue**: Uneven business distribution (high density in cities, sparse in rural areas).
+- **Разделяет мир на сетки фиксированного размера**.
+- **Проблема**: предприятия распределены неравномерно (в городах их много, а в сельской местности мало).
 
-### **Option 3: Geohash**
-- Divide the planet into four quadrants along with the prime meridian and equator. And then divide each grid into four smaller grids. 
-- Each grids can be represented by altering b/w longitude and latitude bit.
-- Repeat this subdivision
+### **Вариант 3: Geohash**
+- Разделить планету на четыре квадранта по нулевому меридиану и экватору, а затем разделить каждую ячейку ещё на четыре меньшие.
+- Каждую ячейку можно представить чередованием битов долготы и широты.
+- Повторять это деление.
 
   <div style="margin-left:3rem">
     <img src="./images/geohash.png" alt="Geohash" width="300" />
@@ -131,185 +131,183 @@ A potiential improvement is to build index on logitude and latitude columns, alh
   </div>
 
 
-- **Encodes latitude and longitude into a single alphanumeric string**. It has 12 precisions (levels)
-- **Hierarchical grid structure** allows for efficient searching.
-- The right precision is chosen by using the minimal geohash length according to the table.
+- **Кодирует широту и долготу одной буквенно-цифровой строкой**. Предусмотрено 12 уровней точности.
+- **Иерархическая структура сетки** обеспечивает эффективный поиск.
+- Подходящую точность выбирают по минимальной длине геохеша согласно таблице.
   <div style="margin-left:3rem">
-    <img src="./images/geohash-radius-mapping.png" alt="Geohash Radius" width="400" />
+    <img src="./images/geohash-radius-mapping.png" alt="Радиус геохеша" width="400" />
   </div>
-- Geohash guarantees that the longer a shared prefix is between two geohashes, the closer they are.
+- Geohash гарантирует: чем длиннее общий префикс двух геохешей, тем ближе соответствующие точки.
 
-- **Challenges**:
+- **Сложности**:
   <div style="margin-left:3rem">
-    <img src="./images/boundary-issue.png" alt="Boundary Issue" width="300" />
+    <img src="./images/boundary-issue.png" alt="Проблема границ" width="300" />
   </div>
 
-  - **Boundary issues** (businesses close to grid edges may get excluded).
-    - Two locations can be very close but have no shared prefix at all (can be on other side of equator)
-    - Two locations can have a long shared prefix but belong to different geohashes.
-  - Solution: Need to search neighboring grids.
+  - **Проблемы на границах** (предприятия рядом с границами ячеек могут не попасть в результаты).
+    - Два местоположения могут быть очень близки, но не иметь общих префиксов (например, находиться по разные стороны экватора).
+    - У двух местоположений может быть длинный общий префикс, хотя они относятся к разным геохешам.
+  - Решение: искать также в соседних ячейках.
 
 
-### **Option 4: Quadtree**
+### **Вариант 4: Quadtree**
 
-  A quadtree is a tree data structure that recursively divides a two-dimensional space into four quadrants, with each internal node having exactly four children, representing the four sub-regions of the space.
-  - The quadtree is an in-memory data structure and it runs on each LBS server and built on server startup time.
+  Quadtree — это древовидная структура данных, которая рекурсивно делит двумерное пространство на четыре квадранта. У каждого внутреннего узла ровно четыре дочерних узла, соответствующих четырём подобластям пространства.
+  - Quadtree — структура данных в памяти; она работает на каждом сервере LBS и строится при запуске сервера.
 
   <div style="margin-left:3rem">
     <img src="./images/quadtree.png" alt="Quadtree" width="500" />
   </div>
 
-  - The root node is recursively broken down into 4 quadrants until no nodes are left with more than x number of businesses (100 in this case).
+  - Корневой узел рекурсивно делится на 4 квадранта, пока в каждом узле не останется не более x предприятий (в данном случае — 100).
 
   <div style="margin-left:3rem">
-    <img src="./images/building-quadtree.png" alt="Building Quadtree" width="500" />
+    <img src="./images/building-quadtree.png" alt="Построение Quadtree" width="500" />
   </div>
 
-- The quadtree index doen't take too much memory (typically in GBs) and can easily fit in one server.
-- Since tge time complexity to build the tree is nlogn, it might take a few minutes to build the tree.
-- **Efficient for k-nearest search queries** (e.g., find the closest gas station).
+- Индекс Quadtree не требует много памяти (обычно несколько ГБ) и легко помещается на одном сервере.
+- Поскольку временная сложность построения дерева составляет nlogn, на его построение может уйти несколько минут.
+- **Эффективен для поиска k ближайших объектов** (например, ближайшей автозаправочной станции).
 
   <div style="margin-left:3rem">
-    <img src="./images/realworld-quadtree.png" alt="Real World Quadtree" width="400" />
+    <img src="./images/realworld-quadtree.png" alt="Quadtree в реальном мире" width="400" />
   </div>
 
-#### Operational considerations
- - For around 200 million businesses, it might take few minutes to build a quadtree at the server start time.
- - While the quadtree is built it cannot serve traffic, therefore a new release should be rolled out incrementally to a subset of servers.
- - When updating a business or adding a new the easiest approach is to incrementally rebuild the quadtree. (Leading to a lot of cache invalidation)
- - Also possible to update the quadtree on the fly but more complex to implement. (Needs locking mechanism)
+#### Эксплуатационные аспекты
+ - Для примерно 200 миллионов предприятий построение Quadtree при запуске сервера может занять несколько минут.
+ - Во время построения Quadtree сервер не может обслуживать запросы, поэтому новую версию следует развёртывать постепенно, на части серверов.
+ - При изменении или добавлении предприятия проще всего постепенно перестраивать Quadtree. (Это приводит к частой инвалидации кэша.)
+ - Также можно обновлять Quadtree на лету, но это сложнее реализовать. (Потребуется механизм блокировок.)
 
-### **Option 5: Google S2**
-It maps a sphere to a !D index based on Hilbert curve.Two points that are close to each other on the Hilbert curve are close in 1D space.
+### **Вариант 5: Google S2**
+Этот подход отображает сферу на одномерный индекс на основе кривой Гильберта. Две близкие точки на кривой Гильберта расположены близко и в одномерном пространстве.
 
 
   <div style="margin-left:3rem">
-    <img src="./images/hilbert-curve.png" alt="Hilbert curve" width="300" />
-    <img src="./images/geofence.png" alt="Geofence" width="355" />
+    <img src="./images/hilbert-curve.png" alt="Кривая Гильберта" width="300" />
+    <img src="./images/geofence.png" alt="Геозона" width="355" />
   </div>
 
-- **Divides the earth into small cells using a Hilbert curve**.
-- Great for geofencing becuase it can cover arbitrary areas with varying levels.
-- Geofencing also allows to define parameters that surround the area of interest.
-- Aother advantage if instead of having a fixed level of precision, we can specify min,max level and max cells in S2.
+- **Делит Землю на небольшие ячейки с помощью кривой Гильберта**.
+- Хорошо подходит для геозонирования, поскольку позволяет охватывать произвольные области с разным уровнем детализации.
+- Геозонирование также позволяет задавать границы области интереса.
+- Ещё одно преимущество: вместо фиксированного уровня точности в S2 можно задать минимальный и максимальный уровни, а также максимальное число ячеек.
 
 
-## Tradeoff Comparison 
+## Сравнение компромиссов
 
 #### Geohash
-- Easy to use and implement- No need to build/rebuild a tree
-- Supports fixed radius results
-- Updating the index is easy.
-- Cannot dynamically adjust the grid size based on population density.
+- Прост в использовании и реализации: не нужно строить или перестраивать дерево.
+- Поддерживает поиск в фиксированном радиусе.
+- Индекс легко обновлять.
+- Не позволяет динамически менять размер ячеек с учётом плотности населения.
 
 #### Quadtree
-- Slightly harder to implement.
-- Supports fetching k-nearest businesses.
-- Can dynamically adjust the grid size based on population desnsity.
-- Updating the index is more complicated as might need to rebuild the whole tree.
+- Немного сложнее в реализации.
+- Поддерживает поиск k ближайших предприятий.
+- Позволяет динамически менять размер ячеек с учётом плотности населения.
+- Индекс сложнее обновлять, поскольку может потребоваться перестроить всё дерево.
 
 ---
 
-## Step 4: Scaling the Database and Caching Strategy
+## Шаг 4: Масштабирование базы данных и стратегия кэширования
 
-### **Scaling the Business Table**
-- **Sharding by business ID** ensures even data distribution.
-- We have separate rows for each business in the table.
+### **Масштабирование таблицы предприятий**
+- **Шардирование по идентификатору предприятия** обеспечивает равномерное распределение данных.
+- Для каждого предприятия в таблице создаётся отдельная строка.
 
-| Geohash | Business ID |
+| Geohash | Идентификатор предприятия |
 |---------|------------|
 | 9q9hvu  | 343        |
 | 9q9hvu  | 347        |
 | 9q9hvu  | 112        |
 
-### **Scaling the Geospatial Index**
-- Might not be a good fit for the geohash table. In this case everything can fit in a single server so there's no tehcnical reason for sharding.
-- A better approach is to have read-replicas to help with read loads.
+### **Масштабирование геопространственного индекса**
+- Шардирование может не подойти для таблицы геохешей. В данном случае все данные помещаются на одном сервере, поэтому технических причин для шардирования нет.
+- Лучше использовать реплики для чтения, чтобы распределить нагрузку на чтение.
 
 
 
 ---
 
-### **Cache Strategy**
-The most obvious cache key choice is the location coordinate, however it has a few issues:
- - Location coordinates from gps are not accurate.
- - A user can move casuing the location coordinate to change.
- - A better key is the geohash.
+### **Стратегия кэширования**
+Самый очевидный вариант ключа кэша — координаты местоположения, однако у него есть несколько недостатков:
+ - Координаты, полученные от GPS, неточны.
+ - Пользователь может переместиться, из-за чего координаты изменятся.
+ - Лучше использовать ключом геохеш.
 
-| Cache Key  | Cache Value |
+| Ключ кэша  | Значение кэша |
 |------------|------------|
-| `geohash`  | List of business IDs in that grid |
-| `business_id` | Business details (name, address, reviews, etc.) |
+| `geohash`  | Список идентификаторов предприятий в этой ячейке |
+| `business_id` | Сведения о предприятии (название, адрес, отзывы и т. д.) |
 
 ---
 
-## Step 5: Deployment Strategy and Final Architecture
+## Шаг 5: Стратегия развёртывания и итоговая архитектура
 
-### **Region and Availability Zones**
-- Deploy LBS and Business Service **across multiple regions**.
+### **Регионы и зоны доступности**
+- Развернуть LBS и сервис предприятий **в нескольких регионах**.
 
-### **Handling Real-Time Updates**
-- **Business updates are batch processed daily**.
+### **Обработка обновлений в реальном времени**
+- **Изменения сведений о предприятиях обрабатываются пакетно раз в день**.
 
-### **Final System Architecture**
+### **Итоговая архитектура системы**
 
 
   <div style="margin-left:3rem">
-    <img src="./images/final-design.png" alt="Final Design" width="500" />
+    <img src="./images/final-design.png" alt="Итоговая архитектура" width="500" />
   </div>
 
 
-This final algorithm looks like this:
+Итоговый алгоритм выглядит следующим образом:
 
-## Steps to Retrieve Nearby Businesses
-1. **User Request:**  
-   - A user searches for restaurants within **500 meters**.  
-   - The client sends **latitude (37.776720), longitude (-122.416730), and radius (500m)** to the **load balancer**.
+## Шаги поиска предприятий поблизости
+1. **Запрос пользователя:**
+   - Пользователь ищет рестораны в радиусе **500 метров**.
+   - Клиент отправляет **широту (37.776720), долготу (-122.416730) и радиус (500m)** на **балансировщик нагрузки**.
 
-2. **Request Forwarding:**  
-   - The **load balancer (LB)** forwards the request to the **Location-Based Service (LBS)**.
+2. **Пересылка запроса:**
+   - **Балансировщик нагрузки (LB)** пересылает запрос в **сервис определения местоположения (LBS)**.
 
-3. **Geohash Calculation:**  
-   - LBS determines the **geohash length** matching the radius.  
-   - Using a reference table, **500m corresponds to geohash length = 6**.
+3. **Расчёт Geohash:**
+   - LBS определяет **длину геохеша**, соответствующую радиусу.
+   - Согласно справочной таблице, **500m соответствует длине геохеша = 6**.
 
-4. **Fetching Neighboring Geohashes:**  
-   - LBS calculates **neighboring geohashes** to include nearby areas.  
-   - The result is a list:  
+4. **Получение соседних геохешей:**
+   - LBS вычисляет **соседние геохеши**, чтобы учесть ближайшие области.
+   - Результат — список:
      ```
      [my_geohash, neighbor1_geohash, neighbor2_geohash, ..., neighbor8_geohash]
      ```
 
-5. **Fetching Business IDs from Redis:**  
-   - For each geohash in the list, LBS queries the **Geohash Redis server** to fetch **business IDs**.  
-   - Parallel queries are used to minimize latency.
+5. **Получение идентификаторов предприятий из Redis:**
+   - Для каждого геохеша из списка LBS обращается к **серверу Redis с геохешами**, чтобы получить **идентификаторы предприятий**.
+   - Чтобы снизить задержку, запросы выполняются параллельно.
 
-6. **Retrieving & Ranking Businesses:**  
-   - LBS fetches **full business details** from the **Business Info Redis server**.  
-   - Businesses are **sorted by distance** from the user’s location.  
-   - The **ranked results** are sent back to the client.
+6. **Получение сведений о предприятиях и ранжирование:**
+   - LBS получает **полные сведения о предприятиях** с **сервера Redis с информацией о предприятиях**.
+   - Предприятия **сортируются по расстоянию** от местоположения пользователя.
+   - **Отранжированные результаты** отправляются клиенту.
 
-## Key Optimizations
-- **Parallel Redis Calls**: Reduces response time.  
-- **Geohash Indexing**: Ensures efficient spatial queries.  
-- **Caching**: Speeds up lookup and retrieval of business data.  
+## Основные оптимизации
+- **Параллельные запросы к Redis**: сокращают время ответа.
+- **Индексация Geohash**: обеспечивает эффективный пространственный поиск.
+- **Кэширование**: ускоряет поиск и получение данных о предприятиях.
 
-This method ensures **low-latency, scalable** retrieval of businesses near a user’s location.
+Этот метод обеспечивает **масштабируемое получение данных с низкой задержкой** о предприятиях рядом с пользователем.
 
 ---
 
-### **Choosing the Best Indexing Method**
-| Indexing Method | Pros | Cons |
+### **Выбор оптимального метода индексации**
+| Метод индексации | Преимущества | Недостатки |
 |----------------|------|------|
-| **Geohash** | Easy to implement, efficient for proximity search | Boundary issues, fixed grid size |
-| **Quadtree** | Dynamically adjusts to density, supports k-nearest queries | More complex, requires tree rebalancing |
-| **Google S2** | Advanced geofencing, used in Google Maps | Harder to implement |
+| **Geohash** | Прост в реализации, эффективен для поиска поблизости | Проблемы на границах, фиксированный размер ячеек |
+| **Quadtree** | Динамически подстраивается под плотность, поддерживает поиск k ближайших объектов | Сложнее, требуется балансировка дерева |
+| **Google S2** | Расширенные возможности геозонирования, используется в Google Maps | Сложнее в реализации |
 
 ---
 
-## References
+## Источники
 1. [Geohash Algorithm](https://www.movable-type.co.uk/scripts/geohash.html)
 2. [Quadtree Indexing](https://en.wikipedia.org/wiki/Quadtree)
 3. [Google S2 Geometry](https://s2geometry.io/)
-
-

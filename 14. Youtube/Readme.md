@@ -1,225 +1,224 @@
-# Chapter 14: Design YouTube
+# Глава 14: Проектирование YouTube
 
-## Introduction
-YouTube is a massive video streaming platform supporting video uploads, playback, and various interactions. This chapter focuses on designing a scalable video streaming system with the following core features:
-- **Fast video uploads**
-- **Smooth video streaming**
-- **Ability to change video quality**
-- **Low infrastructure cost**
-- **High availability and reliability**
+## Введение
+YouTube — крупная платформа потокового видео, поддерживающая загрузку и воспроизведение видео, а также различные виды взаимодействия с ними. В этой главе рассматривается проектирование масштабируемой системы потокового видео со следующими основными функциями:
+- **Быстрая загрузка видео**
+- **Плавное воспроизведение видео**
+- **Возможность менять качество видео**
+- **Низкие затраты на инфраструктуру**
+- **Высокая доступность и надежность**
 
-### Key Statistics (2020)
-- **2 billion monthly active users**
-- **5 billion videos watched per day**
-- **37% of mobile internet traffic comes from YouTube**
-- Available in **80 languages**
-- **$15.1 billion ad revenue** in 2019
-
----
-
-## Step 1: Understand the Problem and Scope
-
-### Core Functionalities
-1. Upload videos
-2. Watch videos
-
-### Supported Platforms
-- Mobile apps, web browsers, and smart TVs
-
-### Assumptions
-- **Daily Active Users (DAU):** 5 million
-- **Average Video Size:** 300 MB
-- **Upload Limits:** Max 1 GB per video
-- **Daily Storage Need:** 150 TB
-- **CDN Costs:** 5 million * 5 videos * 0.3GB * $0.02 =  $150,000/day (using Amazon CloudFront)
+### Основные показатели (2020)
+- **2 миллиарда ежемесячно активных пользователей**
+- **5 миллиардов просмотров видео в день**
+- **37% мобильного интернет-трафика приходится на YouTube**
+- Доступен на **80 языках**
+- **$15.1 миллиарда доходов от рекламы** в 2019 году
 
 ---
 
-## Step 2: High-Level Design
+## Шаг 1: Определение задачи и границ системы
 
-### Components
+### Основные функции
+1. Загрузка видео
+2. Просмотр видео
+
+### Поддерживаемые платформы
+- Мобильные приложения, веб-браузеры и Smart TV
+
+### Допущения
+- **Ежедневно активные пользователи (DAU):** 5 миллионов
+- **Средний размер видео:** 300 MB
+- **Ограничение на загрузку:** не более 1 GB на видео
+- **Необходимый объем хранилища в день:** 150 TB
+- **Затраты на CDN:** 5 млн * 5 видео * 0.3GB * $0.02 =  $150,000/день (с использованием Amazon CloudFront)
+
+---
+
+## Шаг 2: Архитектура верхнего уровня
+
+### Компоненты
 
 <div style="margin-left:3rem">
-    <img src="./images/high-level-design.png" alt="High Level Design" width="400">
+    <img src="./images/high-level-design.png" alt="Архитектура верхнего уровня" width="400">
 </div>
 
-1. **Client:** Devices like smartphones, computers, and TVs.
-2. **CDN (Content Delivery Network):** Stores and streams videos.
-3. **API Servers:** Handles all user interactions except video streaming (e.g., uploads, metadata updates).
-4. **Metadata Database:** Stores video metadata (e.g., title, description, size).
-5. **Original Storage:** Blob storage for uploaded videos.
-6. **Transcoding Servers:** Convert videos into multiple resolutions and formats.
-7. **Transcoded Storage:** Blob storage for transcoded videos.
+1. **Клиент:** устройства, такие как смартфоны, компьютеры и телевизоры.
+2. **CDN (сеть доставки контента):** хранит и передает видео.
+3. **API-серверы:** обрабатывают все действия пользователей, кроме потоковой передачи видео (например, загрузку и обновление метаданных).
+4. **База данных метаданных:** хранит метаданные видео (например, название, описание, размер).
+5. **Исходное хранилище:** объектное хранилище для загруженных видео.
+6. **Серверы транскодирования:** преобразуют видео в несколько разрешений и форматов.
+7. **Хранилище транскодированных видео:** объектное хранилище для обработанных видео.
 
 
 ---
 
-### Core Workflows
-#### 1. Video Uploading Flow
-- **Parallel Processes:**
-  1. Upload video to original storage.
-  2. Update video metadata in the database.
+### Основные сценарии
+#### 1. Поток загрузки видео
+- **Параллельные процессы:**
+  1. Загрузить видео в исходное хранилище.
+  2. Обновить метаданные видео в базе данных.
 
-- **Video Upload (Steps):**
-
-    <div style="margin-left:3rem">
-        <img src="./images/video-uploading-flow.png" alt="Video Upload Flow" width="500">
-    </div>
-
-    - [1] Videos are uploaded to blob storage. 
-    - [2] Transcoding servers convert videos to multiple formats.
-    - [3] One trasncoding is complete, following two steps are exectued in parallel.
-        - [3a] Transcoded videos are sent to transcoded storage.
-        - [3b] Transcoding completion events are queued in the completion queue. 
-    - [3a.1] Videos are distributed to the CDN. 
-    - [3b.1] Completion handlers update metadata and inform users. 
-
-
-
-- **Metadata Upload (Steps):**
+- **Загрузка видео (этапы):**
 
     <div style="margin-left:3rem">
-        <img src="./images/metadata-upload.png" alt="Metadata Upload" height="500">
+        <img src="./images/video-uploading-flow.png" alt="Поток загрузки видео" width="500">
     </div>
 
-    - The client in parallel sends a request to update the video metadata 
-    - The request contains video metadata, including file name, size, format, etc.
+    - [1] Видео загружаются в объектное хранилище. 
+    - [2] Серверы транскодирования преобразуют видео в несколько форматов.
+    - [3] После завершения транскодирования параллельно выполняются следующие два шага.
+        - [3a] Транскодированные видео отправляются в хранилище обработанных видео.
+        - [3b] События о завершении транскодирования помещаются в очередь завершения. 
+    - [3a.1] Видео распространяются через CDN. 
+    - [3b.1] Обработчики завершения обновляют метаданные и уведомляют пользователей. 
+
+
+
+- **Загрузка метаданных (этапы):**
+
+    <div style="margin-left:3rem">
+        <img src="./images/metadata-upload.png" alt="Загрузка метаданных" height="500">
+    </div>
+
+    - Клиент параллельно отправляет запрос на обновление метаданных видео. 
+    - Запрос содержит метаданные видео, включая имя файла, размер, формат и т. д.
     
        
 
 
-#### 2. Video Streaming Flow
+#### 2. Потоковая передача видео
 
 <div style="margin-left: 3em;">
-  <img src="./images/video-streaming-flow.png" alt="Video Streaming Flow" height="400">
+  <img src="./images/video-streaming-flow.png" alt="Потоковая передача видео" height="400">
 </div>
 
-- Videos are streamed directly from the CDN using edge servers to minimize latency.
-- Some of te popular streaming protocols are MPEG_DASH, Apple HLS, Adobe HDS.
--  *Different streaming protocols support different video encodings and playback players.*
+- Видео передаются непосредственно из CDN через периферийные серверы, чтобы минимизировать задержку.
+- К популярным протоколам потоковой передачи относятся MPEG_DASH, Apple HLS и Adobe HDS.
+-  *Разные протоколы потоковой передачи поддерживают разные кодировки видео и проигрыватели.*
 
 
 ---
 
-## Step 3: Design Deep Dive
+## Шаг 3: Детальное проектирование
 
-### Video Transcoding
-#### Importance
-1. Raw video consumes large amounts of storage space. It Reduces storage space.
-2. Ensures compatibility across devices and browsers.
-3. Adapts video quality to network conditions.
+### Транскодирование видео
+#### Зачем оно нужно
+1. Исходное видео занимает много места. Транскодирование уменьшает объем хранилища.
+2. Обеспечивает совместимость с различными устройствами и браузерами.
+3. Позволяет адаптировать качество видео к условиям сети.
 
-#### Components
-- **Container:** Encapsulates video, audio, and metadata (e.g., MP4, AVI).
-- **Codecs:** Compression and Decompression algorithms (e.g., H.264, VP9).
+#### Компоненты
+- **Контейнер:** объединяет видео, аудио и метаданные (например, MP4, AVI).
+- **Кодеки:** алгоритмы сжатия и декомпрессии (например, H.264, VP9).
 
-#### Directed Acyclic Graph (DAG) Model
+#### Модель ориентированного ациклического графа (DAG)
 <div style="margin-left: 3em;">
-    <img src="./images/dag-video-transcoding.png" alt="DAG Video Transcoding" width="600">
+    <img src="./images/dag-video-transcoding.png" alt="Транскодирование видео в виде DAG" width="600">
 </div>
 
-- Transcoding a video is computationally expensive and time-consuming.
-- DAG Model defines tasks like encoding, thumbnail generation, and watermarking.
-- Allows high parallelism in video processing.
+- Транскодирование видео требует значительных вычислительных ресурсов и времени.
+- Модель DAG определяет такие задачи, как кодирование, создание миниатюр и нанесение водяных знаков.
+- Позволяет широко распараллеливать обработку видео.
 
 
-- The original video is split into video, audio, and metadata. 
-    - Video encodings: Videos are converted to support different resolutions, codec, bitrates.
-    - Thumbnail: It can either be uploaded by a user or automatically generated bythe system.
-    - Watermark: Image overlay on top of your video contains identifying information about the video.
+- Исходное видео разделяется на видеодорожку, аудиодорожку и метаданные. 
+    - Кодирование видео: видео преобразуется для поддержки разных разрешений, кодеков и битрейтов.
+    - Миниатюра: ее может загрузить пользователь или автоматически создать система.
+    - Водяной знак: изображение поверх видео, содержащее идентифицирующую информацию о нем.
 
 ---
 
-### Video Transcoding Architecture
+### Архитектура транскодирования видео
 
 <div style="margin-left: 3em;">
-<img src="./images/video-transcoding-architecture.png" alt="Video Transcoding" width="600">
+<img src="./images/video-transcoding-architecture.png" alt="Транскодирование видео" width="600">
 </div>
 
-1. **Preprocessor:** Splits videos into smaller chunks (GOP alignment). It has 4 responsibilities.
+1. **Предварительная обработка:** разделяет видео на небольшие фрагменты (с выравниванием по GOP). У нее четыре задачи.
 
     <div style="margin-left: 3em;">
-        <img src="./images/dag-config.png" alt="DAG Config" width="500">
+        <img src="./images/dag-config.png" alt="Конфигурация DAG" width="500">
     </div>
 
-    - Video splitting: Video stream is split or further split into smaller Group of Pictures (GOP) alignment.
-    - It split videos by GOP alignment for old clients.
-    - It generates DAG based on configuration files client programmers write. 
-    - It stores GOPs and metadata in temporary storage in case the encoding fails, the system could use persisted data for retry operations.
+    - Разделение видео: видеопоток разбивается или дополнительно делится на более мелкие группы кадров (Group of Pictures, GOP) с выравниванием по GOP.
+    - Для старых клиентов видео делится с выравниванием по GOP.
+    - Строит DAG на основе конфигурационных файлов, написанных разработчиками клиента. 
+    - Сохраняет GOP и метаданные во временном хранилище: если кодирование завершится с ошибкой, система сможет использовать сохраненные данные для повторной попытки.
 
 
-2. **DAG Scheduler:** Organizes tasks into sequential or parallel stages.
+2. **Планировщик DAG:** распределяет задачи по последовательным или параллельным этапам.
     <div style="margin-left: 3em;">
-        <img src="./images/dag-scheduler.png" alt="DAG Scheduler" width="500">
+        <img src="./images/dag-scheduler.png" alt="Планировщик DAG" width="500">
     </div>
 
-    - It splits a DAG graph into stages of tasks and puts them in the task queue in the resource manager. 
-    - Stage 1: video, audio, and metadata.
-    - The video file is further split into two tasks in stage 2: video encoding and thumbnail. 
+    - Разбивает граф DAG на этапы задач и помещает их в очередь задач диспетчера ресурсов. 
+    - Этап 1: видео, аудио и метаданные.
+    - На этапе 2 видеофайл разделяется еще на две задачи: кодирование видео и создание миниатюры. 
 
 
-3. **Resource Manager:** Responsible for managing the efficiency of resource allocation.It
-contains 3 queues and a task scheduler.
+3. **Диспетчер ресурсов:** отвечает за эффективное распределение ресурсов. Он
+содержит три очереди и планировщик задач.
     <div style="margin-left: 3em;">
-        <img src="./images/resource-manager.png" alt="Resource Manager" width="700">
+        <img src="./images/resource-manager.png" alt="Диспетчер ресурсов" width="700">
     </div>
 
-    - Task queue: priority queue that contains tasks to be executed.
-    - Worker queue: priority queue that contains worker utilization info.
-    - Running queue: contains  currently running tasks and workers running the tasks.
-    - Task scheduler: picks the optimal task/worker, and instructs the chosen task worker to execute the job.
+    - Очередь задач: очередь с приоритетами, содержащая задачи для выполнения.
+    - Очередь рабочих процессов: очередь с приоритетами, содержащая сведения об использовании рабочих процессов.
+    - Очередь выполняемых задач: содержит текущие задачи и рабочие процессы, выполняющие эти задачи.
+    - Планировщик задач: выбирает оптимальную задачу и рабочий процесс, а затем поручает выбранному рабочему процессу выполнить задание.
 
 
-4. **Task Workers:** Perform transcoding and other operations.
+4. **Рабочие процессы:** выполняют транскодирование и другие операции.
     <div style="margin-left: 3em;">
-        <img src="./images/task-worker.png" alt="Task Worker" width="250">
+        <img src="./images/task-worker.png" alt="Рабочий процесс" width="250">
    </div>
 
-    - Different task workers may run different tasks 
+    - Разные рабочие процессы могут выполнять разные задачи. 
 
 
-5. **Temporary Storage:** Stores intermediate data for retries.
-    - The choice of storage system depends on factors like data type, data size, access frequency, data life span, etc. 
-6. **Output:** Transcoded videos ready for distribution.
+5. **Временное хранилище:** сохраняет промежуточные данные для повторных попыток.
+    - Выбор системы хранения зависит от типа и размера данных, частоты доступа, срока хранения и других факторов. 
+6. **Результат:** транскодированные видео, готовые к распространению.
 
 
 ---
 
-## System Optimizations
+## Оптимизация системы
 
-### Speed Optimizations
-1. **Parallel Video Uploads:** Split videos into smaller chunks for faster, resumable uploads.
+### Оптимизация скорости
+1. **Параллельная загрузка видео:** разделять видео на небольшие фрагменты для ускорения загрузки с возможностью ее возобновления.
 
-    <img src="./images/video-split.png" alt="Video Split" width="600">
+    <img src="./images/video-split.png" alt="Разделение видео" width="600">
 
-2. **Distributed Upload Centers:** Use CDNs as upload hubs close to users.
-3. **Parallel Processing:** Decouple modules using message queues for high parallelism.
+2. **Распределенные центры загрузки:** использовать CDN как точки загрузки рядом с пользователями.
+3. **Параллельная обработка:** разделять модули с помощью очередей сообщений для повышения уровня параллелизма.
 
-    <img src="./images/message-queue1.png" alt="Message Queue" width="600">
-    <img src="./images/message-queue2.png" alt="Message Queue" height="170" width="500">
+    <img src="./images/message-queue1.png" alt="Очередь сообщений" width="600">
+    <img src="./images/message-queue2.png" alt="Очередь сообщений" height="170" width="500">
 
-### Safety Optimizations
-1. **Pre-Signed URLs:** Restrict video uploads to authorized users.
+### Оптимизация безопасности
+1. **Предварительно подписанные URL:** ограничивать загрузку видео авторизованными пользователями.
 
-    <img src="./images/pres-signed-urls.png" alt="Pre Signed" width="500">
+    <img src="./images/pres-signed-urls.png" alt="Предварительно подписанные URL" width="500">
 
-2. **Protect Videos:**
-   - **DRM Systems** (e.g., Apple FairPlay, Google Widevine).
-   - **AES Encryption.**
-   - **Watermarking.**
+2. **Защита видео:**
+   - **Системы DRM** (например, Apple FairPlay, Google Widevine).
+   - **Шифрование AES.**
+   - **Нанесение водяных знаков.**
 
-### Cost-Saving Optimizations
-1. Serve only popular videos via CDN; less popular ones from high-capacity servers.
-2. Encode on-demand for rarely accessed videos.
-3. Regionalize video distribution based on popularity.
-4. Build custom CDNs and partner with ISPs to reduce bandwidth costs.
+### Оптимизация затрат
+1. Передавать через CDN только популярные видео, а менее популярные — с серверов большой емкости.
+2. Кодировать по запросу видео, к которым редко обращаются.
+3. Распределять видео по регионам с учетом их популярности.
+4. Создавать собственные CDN и сотрудничать с интернет-провайдерами, чтобы снизить затраты на пропускную способность.
 
 ---
 
-## Error Handling
-### Recoverable Errors
-- Retry failed uploads, transcoding, or resource allocation tasks.
+## Обработка ошибок
+### Восстанавливаемые ошибки
+- Повторять неудачные загрузки, транскодирование или задачи распределения ресурсов.
 
-### Non-Recoverable Errors
-- Stop malformed video processing and return error codes.
-
+### Невосстанавливаемые ошибки
+- Прекращать обработку некорректных видео и возвращать коды ошибок.

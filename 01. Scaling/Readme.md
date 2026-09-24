@@ -1,150 +1,150 @@
-# Chapter 1: Scale from Zero to Millions of Users
+# Глава 1: Масштабирование от нуля до миллионов пользователей
 
-## Introduction
-Scaling a system to support millions of users is a complex, iterative journey requiring refinement and optimization. This chapter outlines how to begin with a single server setup and scale the architecture step by step to handle millions of users.
+## Введение
+Масштабирование системы для поддержки миллионов пользователей — сложный итеративный процесс, требующий доработок и оптимизации. В этой главе описано, как начать с конфигурации на одном сервере и постепенно масштабировать архитектуру для обслуживания миллионов пользователей.
 
 ---
 
-## Section 1: Single Server Setup
-Initially, all components (web app, database, cache) run on a single server. 
+## Раздел 1: Конфигурация с одним сервером
+Изначально все компоненты (веб-приложение, база данных, кэш) работают на одном сервере. 
 
 <div style="margin-left:3rem">
    <img src="./images/single-server.png" width="400" />
 </div>
 
-### Request Flow
-1. Users access the application via domain names (e.g., `api.mysite.com`), resolved to IP addresses using DNS.
-2. IP address of the web-server is returned to the browser or mobile app.
-3. HTTP requests are sent to the web server, which returns HTML or JSON responses.
+### Поток запросов
+1. Пользователи обращаются к приложению по доменным именам (например, `api.mysite.com`), которые DNS преобразует в IP-адреса.
+2. Браузеру или мобильному приложению возвращается IP-адрес веб-сервера.
+3. На веб-сервер отправляются HTTP-запросы, на которые он отвечает данными в формате HTML или JSON.
 
-### Traffic Sources
-1. **Web Applications:** Use server-side languages (e.g., Python, Java) for business logic and client-side languages (e.g., JavaScript, HTML) for presentation.
-2. **Mobile Applications:** Communicate with the web server using HTTP and JSON for lightweight data exchange.
+### Источники трафика
+1. **Веб-приложения:** используют серверные языки (например, Python, Java) для бизнес-логики и клиентские языки (например, JavaScript, HTML) для представления данных.
+2. **Мобильные приложения:** взаимодействуют с веб-сервером по HTTP и используют JSON для обмена данными с небольшими накладными расходами.
 
 ---
 
-## Section 2: Database Separation
-As the user base grows, the database is moved to a dedicated server to allow independent scaling of web and database tiers.
+## Раздел 2: Отделение базы данных
+По мере роста числа пользователей базу данных переносят на отдельный сервер, чтобы уровни веб-приложения и базы данных можно было масштабировать независимо.
 
 <div style="margin-left:3rem">
    <img src="./images/database.png" width="400" />
 </div>
 
-### Database Choices
+### Выбор базы данных
 
-1. **Relational Databases (SQL):** Structured data stored in tables. Examples: MySQL, PostgreSQL.
-2. **Non-Relational Databases (NoSQL):** Suitable for unstructured data or low-latency requirements. Categories include:
-   - Key-Value Stores
-   - Graph Databases
-   - Column Stores
-   - Document Stores
+1. **Реляционные базы данных (SQL):** структурированные данные хранятся в таблицах. Примеры: MySQL, PostgreSQL.
+2. **Нереляционные базы данных (NoSQL):** подходят для неструктурированных данных и случаев, требующих низкой задержки. К ним относятся:
+   - Хранилища ключ-значение
+   - Графовые базы данных
+   - Колоночные хранилища
+   - Документные хранилища
 
-- Non-relational databases might be the right choice if:
-   - application requires super-low latency.
-   - data is unstructured, or  there is no relational data.
-   - only need to serialize and deserialize data (JSON, XML, YAML, etc.).
-   - need to store a massive amount of data.
+- Нереляционные базы данных могут быть подходящим выбором, если:
+   - приложению требуется очень низкая задержка.
+   - данные неструктурированы или не имеют реляционной структуры.
+   - требуется только сериализовать и десериализовать данные (JSON, XML, YAML и т. д.).
+   - необходимо хранить огромный объём данных.
 
 ---
 
-## Section 3: Vertical vs Horizontal Scaling
-### Vertical Scaling
-- Adds more resources (CPU, RAM) to existing servers.
-- Limited by hardware constraints and lacks redundancy.
+## Раздел 3: Вертикальное и горизонтальное масштабирование
+### Вертикальное масштабирование
+- Добавляет ресурсы (CPU, RAM) существующим серверам.
+- Ограничено возможностями оборудования и не обеспечивает резервирование.
 
-### Horizontal Scaling
-- Adds more servers to the pool, making it more suitable for large-scale systems.
-- A load balancer is used to handle the request routing between the servers.
+### Горизонтальное масштабирование
+- Добавляет в пул серверы, что лучше подходит для крупномасштабных систем.
+- Для распределения запросов между серверами используется балансировщик нагрузки.
 ---
 
-## Section 4: Load Balancer
+## Раздел 4: Балансировщик нагрузки
 
 <div style="margin-left:3rem">
    <img src="./images/load-balancer.png" width="400" />
 </div>
 
-A **load balancer** distributes traffic among multiple servers. Benefits include:
-1. Redundancy: If a server goes offline, traffic is rerouted.
-   -  If server 1 goes offline, all the traffic will be routed to server 2.
-2. Scalability: Easily add servers to handle traffic spikes.
-   -  If the website traffic grows rapidly, subsequent servers can be added to handle the additional traffic.
+**Балансировщик нагрузки** распределяет трафик между несколькими серверами. Преимущества:
+1. Резервирование: если сервер выходит из строя, трафик перенаправляется.
+   - Если сервер 1 выходит из строя, весь трафик будет направлен на сервер 2.
+2. Масштабируемость: серверы можно легко добавлять для обработки всплесков трафика.
+   - Если трафик сайта быстро растёт, можно добавлять серверы для обработки дополнительной нагрузки.
 
 ---
 
-## Section 5: Database Replication
+## Раздел 5: Репликация базы данных
 
 <div style="margin-left:3rem">
    <img src="./images/database-replication.png" width="400" />
 </div>
 
-### Master-Slave Model
-- **Master Database:** Handles write operations.
-   - All the data-modifying commands like insert, delete, or update must be sent to the master database.
-- **Slave Databases:** Handle read operations, improving performance and reliability.
-   - Since the ratio of reads to writes is higher in most applications; thus, the number of slave
-databases in a system is usually larger than the number of master databases.
+### Модель «ведущий — ведомые»
+- **Ведущая база данных:** обрабатывает операции записи.
+   - Все команды, изменяющие данные, например insert, delete или update, должны отправляться в ведущую базу данных.
+- **Ведомые базы данных:** обрабатывают операции чтения, повышая производительность и надёжность.
+   - Поскольку в большинстве приложений операций чтения больше, чем операций записи, ведомых баз
+ данных в системе обычно больше, чем ведущих.
 
-### Benefits
-1. Improved performance through parallel read operations.
-2. High availability and data reliability through redundancy.
+### Преимущества
+1. Повышение производительности за счёт параллельного чтения.
+2. Высокая доступность и надёжность данных благодаря резервированию.
 
 
-### Failure Handling
-- If only one slave database is available and it goes offline, read operations will be directed
-to the master database temporarily.
-- In case multiple slave databases are available, read operations are
-redirected to other healthy slave databases and a new server will replace the old one. 
--  If the master database goes offline, a slave database will be promoted to be the new
-master.
-- In production system the chosen slave database might not be up to date, hence data needs to be updated by running data
-recovery scripts (methods like multi-masters and circular replication could help).
+### Обработка сбоев
+- Если доступна только одна ведомая база данных и она выходит из строя, операции чтения временно будут направляться
+ в ведущую базу данных.
+- Если доступно несколько ведомых баз данных, операции чтения перенаправляются
+ на другие исправные ведомые базы, а вышедший из строя сервер заменяется новым. 
+- Если ведущая база данных выходит из строя, одну из ведомых баз повышают до роли новой
+ ведущей.
+- В рабочей системе выбранная ведомая база может быть неактуальной, поэтому данные нужно обновить с помощью сценариев
+ восстановления (могут помочь такие методы, как схема с несколькими ведущими и кольцевая репликация).
 
 ---
 
-## Section 6: Caching
-A **cache** stores frequently accessed data in memory to reduce database load. The cache tier is a temporary data store layer, much faster than the database. 
+## Раздел 6: Кэширование
+**Кэш** хранит часто запрашиваемые данные в памяти, чтобы снизить нагрузку на базу данных. Уровень кэширования — это временное хранилище данных, значительно более быстрое, чем база данных. 
 
 <div style="margin-left:3rem">
    <img src="./images/cache.png" width="500" />
 </div>
 
-### Caching considerations
-1. **Use case**: Consider using cache when data is read frequently but modified infrequently.
-2. **Expiration Policies:** Once cached data is expired, it is removed from the cache. When there is no expiration policy, cached
-data will be stored in the memory permanently.
-3. **Consistency:** This means keeping the data store and the cache in sync. Inconsistency
-can happen because data-modifying operations on the data store and cache are not in a single transaction. 
-4. **Mitigating failures**: A single cache server represents a potential single point of failure, multiple
-cache servers across different data centers are recommended to avoid SPOF.
-5. **Eviction Policies:**: Once the cache is full, items need to be evicted to free up memory. LRU is the most popular cache eviction policy.
+### Что учитывать при кэшировании
+1. **Сценарий использования**: кэш стоит применять, если данные часто читают, но редко изменяют.
+2. **Политики истечения срока действия:** по истечении срока кэшированные данные удаляются из кэша. Если политика истечения срока действия не задана, кэшированные
+ данные будут храниться в памяти постоянно.
+3. **Согласованность:** необходимо поддерживать синхронность хранилища данных и кэша. Несогласованность
+ может возникнуть, поскольку операции изменения данных в хранилище и кэше не входят в одну транзакцию. 
+4. **Снижение риска сбоев**: один сервер кэша может стать единой точкой отказа; чтобы избежать SPOF, рекомендуется использовать несколько
+ серверов кэша в разных центрах обработки данных.
+5. **Политики вытеснения:** когда кэш заполнен, для освобождения памяти необходимо вытеснять элементы. LRU — самая популярная политика вытеснения элементов из кэша.
 
 ---
 
-## Section 7: Content Delivery Network (CDN)
-A **CDN** improves load times by caching static content (images, CSS, JavaScript) on geographically distributed servers.
+## Раздел 7: Сеть доставки контента (CDN)
+**CDN** ускоряет загрузку, кэшируя статическое содержимое (изображения, CSS, JavaScript) на географически распределённых серверах.
 
 <div style="margin-left:3rem">
    <img src="./images/cdn.png" width="400" />
 </div>
 
-### Workflow
-1. User requests content from the nearest CDN server.
-2. If unavailable, content is fetched from the origin server and cached.
+### Рабочий процесс
+1. Пользователь запрашивает содержимое у ближайшего сервера CDN.
+2. Если содержимого там нет, его получают с исходного сервера и кэшируют.
 
 
-### CDN considerations
-1. **Cost:** CDNs are run by third-party providers which charge for data transfers in and out of the CDN.
-2. **Cache Expiry:** The cache expiry time should neither be too long nor too short.
-3. **CDN fallback:** If there is a temporary CDN outage, clients should be able to detect the problem
-and request resources from the origin.
-4. **Invalidating files:** If files are updated the cache should be invalidated to point to the updated files.
+### Что учитывать при использовании CDN
+1. **Стоимость:** CDN предоставляют сторонние компании, взимающие плату за передачу данных в CDN и из неё.
+2. **Истечение срока кэширования:** срок хранения в кэше не должен быть ни слишком долгим, ни слишком коротким.
+3. **Резервный источник при сбое CDN:** если CDN временно недоступна, клиенты должны обнаружить проблему
+ и запросить ресурсы у исходного сервера.
+4. **Инвалидация файлов:** при обновлении файлов кэш нужно инвалидировать, чтобы он указывал на новые версии.
 
 ---
 
-## Section 8: Stateless Web Tier
-By moving session data to a shared datastore, web servers become stateless. This allows:
-1. Easier horizontal scaling.
-2. Auto-scaling based on traffic.
+## Раздел 8: Веб-уровень без состояния
+Если перенести данные сеансов в общее хранилище, веб-серверы станут stateless. Это позволяет:
+1. Упростить горизонтальное масштабирование.
+2. Автоматически масштабировать систему в зависимости от трафика.
 
 <div style="margin-left:3rem">
    <img src="./images/stateless.png" width="400" />
@@ -152,88 +152,87 @@ By moving session data to a shared datastore, web servers become stateless. This
 
 ---
 
-## Section 9: Multi-Data Center Setup
-Deploying across multiple data centers improves availability and reduces latency. Strategies include:
+## Раздел 9: Развёртывание в нескольких центрах обработки данных
+Развёртывание в нескольких центрах обработки данных повышает доступность и снижает задержку. Стратегии включают:
 
 <div style="margin-left:3rem">
    <img src="./images/data-center.png" width="400" />
 </div>
 
-1. **GeoDNS Routing:** Direct users to the nearest data center.
-2. **Data Replication:** Synchronize data across centers to prevent inconsistencies.
+1. **Маршрутизация GeoDNS:** направляет пользователей в ближайший центр обработки данных.
+2. **Репликация данных:** синхронизирует данные между центрами, предотвращая несогласованность.
 
-### Key considerations
-- **Traffic redirection:** Effective tools are needed to direct traffic to the correct data center.
-- **Data synchronization:** A common strategy is to replicate data across multiple data centers. 
-- **Test and deployment:**  Automated deployment tools are vital to keep services consistent through all the data centers.
+### Важные аспекты
+- **Перенаправление трафика:** нужны эффективные инструменты для направления трафика в нужный центр обработки данных.
+- **Синхронизация данных:** распространённая стратегия — реплицировать данные между несколькими центрами обработки данных. 
+- **Тестирование и развёртывание:** средства автоматизации развёртывания необходимы, чтобы поддерживать согласованность сервисов во всех центрах обработки данных.
 
 ---
 
-## Section 10: Message Queue
-A **message queue** is a durable component, stored in memory, that supports asynchronous
-communication. It serves as a buffer and distributes asynchronous requests.
+## Раздел 10: Очередь сообщений
+**Очередь сообщений** — это надёжный компонент в памяти, поддерживающий асинхронный
+обмен данными. Она служит буфером и распределяет асинхронные запросы.
 
 <div style="margin-left:3rem">
    <img src="./images//message-queue.png" width="500" />
 </div>
 
-- Input services, called producers/publishers, create messages, and publish them to a message queue.
-- Other services called consumers/subscribers, connect to the queue, and perform actions defined by the messages.
+- Входные сервисы, называемые производителями/издателями, создают сообщения и публикуют их в очереди сообщений.
+- Другие сервисы, называемые потребителями/подписчиками, подключаются к очереди и выполняют действия, заданные сообщениями.
 
 ---
 
-## Section 11: Logging, Metrics, and Automation
+## Раздел 11: Журналирование, метрики и автоматизация
 
 <div style="margin-left:3rem">
    <img src="./images/logging.png" width="400" />
 </div>
 
-### Importance
-1. **Logging:** Tracks errors and system health.
-2. **Metrics:** Provides insights into performance and user activity.
-3. **Automation:** Streamlines testing, deployment, and scaling.
+### Важность
+1. **Журналирование:** отслеживает ошибки и состояние системы.
+2. **Метрики:** дают представление о производительности и активности пользователей.
+3. **Автоматизация:** упрощает тестирование, развёртывание и масштабирование.
 
 ---
 
-## Section 12: Database Scaling
-### Vertical Scaling
-- Adds hardware resources but has physical and cost limitations.
-- Has multiple drawbacks:
-   -  Greater risk of single point of failures.
-   -  Overall cost of vertical scaling is high
+## Раздел 12: Масштабирование базы данных
+### Вертикальное масштабирование
+- Добавляет аппаратные ресурсы, но ограничено физическими возможностями и стоимостью.
+- Имеет несколько недостатков:
+   - Повышенный риск единой точки отказа.
+   - В целом вертикальное масштабирование обходится дорого.
 
-### Horizontal Scaling (Sharding)
+### Горизонтальное масштабирование (шардирование)
 
 <div style="margin-left:3rem">
    <img src="./images/horizontal-scaling.png" width="400" />
 </div>
 
-- Divides data across multiple shards using keys (e.g., `user_id`).
-   - Sharding separates large databases into smaller, more easily managed parts called shards.
-   - Each shard shares the same schema, though the actual data on each shard is unique to the shard.
--  Sharding key is critical when implementing a sharding strategy. When choosing a sharding key it is important to choose a key that can evenly distribute data.
+- Разделяет данные между несколькими шардами с помощью ключей (например, `user_id`).
+   - Шардирование делит большие базы данных на меньшие, более удобные для управления части, называемые шардами.
+   - У всех шардов одна схема, но фактические данные в каждом шарде уникальны.
+- Ключ шардирования играет важную роль при реализации стратегии шардирования. Нужно выбрать ключ, который обеспечит равномерное распределение данных.
 
-#### Challenges 
-1. **Resharding data:** Resharding data is needed when:
-   - Single shard could no longer hold more data due to rapid growth. 
-   - Certain shards might experience shard exhaustion faster than others due to uneven data distribution.
-   - Consistent Hashing is used to overcome these problems
+#### Проблемы 
+1. **Перешардирование данных:** оно требуется, когда:
+   - из-за быстрого роста один шард больше не может вместить данные. 
+   - некоторые шарды могут исчерпать ёмкость быстрее других из-за неравномерного распределения данных.
+   - для решения этих проблем используется согласованное хеширование.
 
-2. **Celebrity problem:**  Excessive access to a specific shard could cause server overload.
-   - To solve this problem, we may need to allocate a shard for each celebrity.
+2. **Проблема знаменитости:** слишком частое обращение к определённому шарду может перегрузить сервер.
+    - Для решения проблемы может потребоваться выделить отдельный шард для каждой знаменитости.
 
-3. **Join and de-normalization:** Once a database has been sharded across multiple servers, it is hard to perform join operations across database shards.
-   -  A common workaround is to de-normalize the database so that queries can be performed in a single table.
+3. **Соединения и денормализация:** после распределения базы данных по нескольким серверам выполнять операции join между шардами сложно.
+    - Распространённый обходной путь — денормализовать базу данных, чтобы запросы можно было выполнять по одной таблице.
 
 ---
 
-## Conclusion
-### Key Takeaways
-1. Keep the web tier stateless.
-2. Build redundancy at every tier.
-3. Use caching and CDNs to optimize performance.
-4. Scale the data tier with sharding.
-5. Decouple components for flexibility.
+## Заключение
+### Основные выводы
+1. Поддерживайте веб-уровень без состояния.
+2. Обеспечивайте резервирование на каждом уровне.
+3. Используйте кэширование и CDN для оптимизации производительности.
+4. Масштабируйте уровень данных с помощью шардирования.
+5. Разделяйте компоненты для большей гибкости.
 
-This chapter provides a solid foundation for building scalable systems that can handle millions of users.
-
+Эта глава даёт прочную основу для создания масштабируемых систем, способных обслуживать миллионы пользователей.

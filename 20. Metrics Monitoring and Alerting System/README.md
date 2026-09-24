@@ -1,90 +1,90 @@
-# Chapter 20: Metrics Monitoring and Alerting System
+# Глава 20: Система мониторинга метрик и оповещений
 
-## Introduction
-This chapter focuses on designing a highly scalable **metrics monitoring and alerting system**, which is critical for ensuring high availability and reliability.
-
----
-
-## Step 1: Understand the Problem and Establish Design Scope
-A metrics monitoring system can mean a lot of different things - eg you don't want to design a logs aggregation system, when the interviewer is interested in infra metrics only.
-
-Let's try to understand the problem first:
- - C: Who are we building the system for? An in-house monitoring system for a big tech company or a SaaS like DataDog?
- - I: We are building for internal use only.
- - C: Which metrics do we want to collect?
- - I: Operational system metrics - CPU load, Memory, Data disk space. But also high-level metrics like requests per second. Business metrics are not in scope.
- - C: What is the scale of the infrastructure we're monitoring?
- - I: 100mil daily active users, 1000 server pools, 100 machines per pool
- - C: How long should we keep the data?
- - I: Let's assume 1y retention.
- - C: May we reduce metrics data resolution for long-term storage?
- - I: Keep newly received metrics for 7 days. Roll them up to 1m resolution for next 30 days. Further roll them up to 1h resolution after 30 days.
- - C: What are the supported alert channels?
- - I: Email, phone, PagerDuty or webhooks.
- - C: Do we need to collect logs such as error or access logs?
- - I: No
- - C: Do we need to support distributed system tracing?
- - I: No
-
-### **High-level requirements and assumptions**
-The infrastructure being monitored is large-scale:
- - 100mil DAU
- - 1000 server pools * 100 machines * ~100 metrics per machine -> ~10mil metrics
- - 1-year data retention
- - Data retention policy - raw for 7d, 1-minute resolution for 30d, 1h resolution for 1y
-
-A variety of metrics can be monitored:
- - CPU load
- - Request count
- - Memory usage
- - Message count in message queues
-
-### **Non-functional requirements**
- - **Scalability**: System should be scalable to accommodate more metrics and alerts
- - **Low latency**: System needs to have low query latency for dashboards and alerts
- - **Reliability**: System should be highly reliable to avoid missing critical alerts
- - **Flexibility**: System should be able to easily integrate new technologies in the future
-
-What requirements are out of scope?
- - **Log monitoring**: the ELK stack is very popular for this use-case
- - **Distributed system tracing**: this refers to collecting data about a request lifecycle as it flows through multiple services within the system
+## Введение
+В этой главе рассматривается проектирование высокомасштабируемой **системы мониторинга метрик и оповещений**, необходимой для обеспечения высокой доступности и надёжности.
 
 ---
 
-## Step 2: Propose High-Level Design and Get Buy-In
+## Шаг 1: Понимание задачи и определение границ проектирования
+Система мониторинга метрик может означать разные вещи. Например, не стоит проектировать систему агрегации журналов, если интервьюера интересуют только метрики инфраструктуры.
 
-### **Fundamentals**
-There are five core components involved in a metrics monitoring and alerting system:
+Сначала попробуем разобраться в задаче:
+ - К: Для кого мы создаём систему? Это внутренняя система мониторинга крупной технологической компании или SaaS-сервис, например DataDog?
+ - И: Система предназначена только для внутреннего использования.
+ - К: Какие метрики нужно собирать?
+ - И: Эксплуатационные метрики системы: загрузку CPU, использование памяти и дискового пространства. Также нужны метрики высокого уровня, например запросы в секунду. Бизнес-метрики не входят в область задачи.
+ - К: Каков масштаб инфраструктуры, которую мы мониторим?
+ - И: 100 млн ежедневно активных пользователей, 1000 пулов серверов, по 100 машин в каждом пуле.
+ - К: Как долго нужно хранить данные?
+ - И: Предположим, срок хранения составляет 1 год.
+ - К: Можно ли снижать разрешение метрик для долгосрочного хранения?
+ - И: Хранить вновь полученные метрики 7 дней. В течение следующих 30 дней агрегировать их с разрешением 1 минута. После этого агрегировать их с разрешением 1 час.
+ - К: Какие каналы оповещений поддерживаются?
+ - И: Электронная почта, телефон, PagerDuty или вебхуки.
+ - К: Нужно ли собирать журналы, например журналы ошибок или доступа?
+ - И: Нет.
+ - К: Нужно ли поддерживать распределённую трассировку?
+ - И: Нет.
+
+### **Требования и допущения высокого уровня**
+Мониторируемая инфраструктура имеет большой масштаб:
+ - 100 млн DAU;
+ - 1000 пулов серверов * 100 машин * ~100 метрик на машину -> ~10 млн метрик;
+ - хранение данных в течение 1 года;
+ - политика хранения данных: исходные данные 7 дней, разрешение 1 минута в течение 30 дней, разрешение 1 час в течение 1 года.
+
+Можно отслеживать разные метрики:
+ - загрузку CPU;
+ - количество запросов;
+ - использование памяти;
+ - количество сообщений в очередях сообщений.
+
+### **Нефункциональные требования**
+ - **Масштабируемость**: система должна масштабироваться при увеличении числа метрик и оповещений.
+ - **Низкая задержка**: запросы для панелей мониторинга и оповещений должны выполняться с низкой задержкой.
+ - **Надёжность**: система должна быть высоконадёжной, чтобы не пропускать критически важные оповещения.
+ - **Гибкость**: в будущем система должна легко интегрироваться с новыми технологиями.
+
+Какие требования не входят в область задачи?
+ - **Мониторинг журналов**: для этого сценария широко используется стек ELK.
+ - **Распределённая трассировка**: сбор данных о жизненном цикле запроса при его прохождении через несколько сервисов системы.
+
+---
+
+## Шаг 2: Предложение архитектуры высокого уровня и согласование решения
+
+### **Основы**
+Система мониторинга метрик и оповещений состоит из пяти основных компонентов:
 
 <div style="margin-left:3rem">
-    <img src="./images/metrics-monitoring-core-components.png" alt="metrics-monitoring-core-components" width="500" />
+    <img src="./images/metrics-monitoring-core-components.png" alt="Основные компоненты системы мониторинга метрик" width="500" />
 </div>
 
- - **Data collection**: collect metrics data from different sources
- - **Data transmission**: transfer data from sources to the metrics monitoring system
- - **Data storage**: organize and store incoming data
- - **Alerting**: Analyze incoming data, detect anomalies and generate alerts
- - **Visualization**: Present data in graphs, charts, etc
+ - **Сбор данных**: получение метрик из разных источников.
+ - **Передача данных**: передача данных из источников в систему мониторинга метрик.
+ - **Хранение данных**: организация и хранение поступающих данных.
+ - **Оповещения**: анализ поступающих данных, обнаружение аномалий и создание оповещений.
+ - **Визуализация**: представление данных в виде графиков, диаграмм и т. д.
 
-### **Data model**
-Metrics data is usually recorded as a time-series, which contains a set of values with timestamps.
-The series can be identified by name and an optional set of tags.
+### **Модель данных**
+Данные метрик обычно записываются в виде временного ряда, состоящего из набора значений с временными метками.
+Ряд идентифицируется по имени и необязательному набору тегов.
 
-Example 1 - What is the CPU load on production server instance i631 at 20:00?
+Пример 1: какова загрузка CPU производственного экземпляра сервера i631 в 20:00?
 
 <div style="margin-left:3rem">
-    <img src="./images/metrics-example-1.png" alt="metrics-example-1" width="500" />
+    <img src="./images/metrics-example-1.png" alt="Пример метрик 1" width="500" />
 </div>
 
-The data can be identified by the following table:
+Эти данные можно представить следующей таблицей:
 
 <div style="margin-left:3rem">
-    <img src="./images/metrics-example-1-data.png" alt="metrics-example-1-data" width="500" />
+    <img src="./images/metrics-example-1-data.png" alt="Таблица данных для примера метрик 1" width="500" />
 </div>
 
-The time series is identified by the metric name, labels and a single point in at a specific time.
+Временной ряд определяется именем метрики, метками и отдельной точкой данных в конкретный момент времени.
 
-Example 2 - What is the average CPU load across all web servers in the us-west region for the last 10min?
+Пример 2: какова средняя загрузка CPU всех веб-серверов в регионе us-west за последние 10 минут?
 
 ```
 CPU.load host=webserver01,region=us-west 1613707265 50
@@ -102,201 +102,201 @@ CPU.load host=webserver01,region=us-west 1613707265 76
 CPU.load host=webserver01,region=us-west 1613707265 83
 ```
 
-This is an example data we might pull from storage to answer that question.
-The average CPU load can be calculated by averaging the values in the last column of the rows.
+Это пример данных, которые можно извлечь из хранилища, чтобы ответить на этот вопрос.
+Среднюю загрузку CPU можно вычислить, усреднив значения в последнем столбце строк.
 
-The format shown above is called the line protocol and is used by many popular monitoring software in the market - eg Prometheus, OpenTSDB.
+Показанный выше формат называется line protocol и используется во многих популярных системах мониторинга, например Prometheus и OpenTSDB.
 
-What every time series consists of:
-
-<div style="margin-left:3rem">
-    <img src="./images/time-series-data-example.png" alt="time-series-data-example" width="500" />
-</div>
-
-A good way to visualize how data looks like:
+Из чего состоит каждый временной ряд:
 
 <div style="margin-left:3rem">
-    <img src="./images/time-series-data-viz.png" alt="time-series-data-viz" width="500" />
+    <img src="./images/time-series-data-example.png" alt="Пример данных временного ряда" width="500" />
 </div>
 
- - The x axis is the time
- - the y axis is the dimension you're querying - eg metric name, tag, etc.
-
-The data access pattern is write-heavy and spiky reads as we collect a lot of metrics, but they are infrequently accessed, although in bursts when eg there are ongoing incidents.
-
-The data storage system is the heart of this design. 
- - It is not recommended to use a general-purpose database for this problem, although you could achieve good scale \w expert-level tuning.
- - Using a NoSQL database can work in theory, but it is hard to devise a scalable schema for effectively storing and querying time-series data.
-
-There are many databases, specifically tailored for storing time-series data. Many of them support custom query interfaces which allow for effective querying of time-series data.
- - OpenTSDB is a distributed time-series database, but it is based on Hadoop and HBase. If you don't have that infrastructure provisioned, it would be hard to use this tech.
- - Twitter uses MetricsDB, while Amazon offers Timestream.
- - The two most popular time-series databases are InfluxDB and Prometheus. 
- - They are designed to store large volumes of time-series data. Both of them are based on in-memory cache + on-disk storage.
-
-Example scale of InfluxDB - more than 250k writes per second when provisioned with 8 cores and 32gb RAM:
+Удобный способ визуализировать структуру данных:
 
 <div style="margin-left:3rem">
-    <img src="./images/influxdb-scale.png" alt="influxdb-scale" width="500" />
+    <img src="./images/time-series-data-viz.png" alt="Визуализация данных временного ряда" width="500" />
 </div>
 
-It is not expected for you to understand the internals of a metrics database as it is niche knowledge. You might be asked only if you've mentioned it on your resume.
+ - Ось x соответствует времени.
+ - Ось y соответствует измерению, по которому выполняется запрос, например имени метрики или тегу.
 
-For the purposes of the interview, it is sufficient to understand that metrics are time-series data and to be aware of popular time-series databases, like InfluxDB.
+Для доступа к данным характерны интенсивная запись и всплески чтения: мы собираем много метрик, но обращаемся к ним редко, хотя во время инцидентов могут возникать резкие всплески запросов.
 
-One nice feature of time-series databases is the efficient aggregation and analysis of large amounts of time-series data by labels.
-InfluxDB, for example, builds indexes for each label.
+Система хранения данных — ключевая часть этой архитектуры.
+ - Для этой задачи не рекомендуется использовать базу данных общего назначения, хотя при экспертной настройке можно добиться хорошей масштабируемости.
+ - Теоретически можно использовать NoSQL-базу, но сложно разработать масштабируемую схему для эффективного хранения и обработки запросов к временным рядам.
 
-It is critical, however, to keep the cardinality of labels low - ie, not using too many unique labels.
+Существует множество баз данных, специально предназначенных для хранения временных рядов. Многие из них предоставляют собственные интерфейсы запросов, позволяющие эффективно работать с такими данными.
+ - OpenTSDB — распределённая база данных временных рядов на основе Hadoop и HBase. Если соответствующая инфраструктура ещё не развёрнута, использовать эту технологию будет сложно.
+ - Twitter использует MetricsDB, а Amazon предлагает Timestream.
+ - Две наиболее популярные базы данных временных рядов — InfluxDB и Prometheus.
+ - Они предназначены для хранения больших объёмов данных временных рядов и используют кэш в памяти вместе с дисковым хранилищем.
 
-### **High-level Design**
+Пример производительности InfluxDB: более 250 тыс. операций записи в секунду при конфигурации с 8 ядрами и 32 ГБ RAM:
 
 <div style="margin-left:3rem">
-    <img src="./images/high-level-design.png" alt="high-level-design" width="500" />
+    <img src="./images/influxdb-scale.png" alt="Производительность InfluxDB" width="500" />
 </div>
 
- - **Metrics source**: can be application servers, SQL databases, message queues, etc.
- - **Metrics collector**: Gathers metrics data and writes to time-series database
- - **Time-series database**: stores metrics as time-series. Provides a custom query interface for analyzing large amounts of metrics.
- - **Query service**: Makes it easy to query and retrieve data from the time-series DB. Could be replaced entirely by the DB's interface if it's sufficiently powerful.
- - **Alerting system**: Sends alert notifications to various alerting destinations.
- - **Visualization system**: Shows metrics in the form of graphs/charts.
+От вас не ожидают знания внутреннего устройства базы данных метрик: это узкоспециализированная тема. О ней могут спросить, только если вы упомянули её в резюме.
+
+Для интервью достаточно понимать, что метрики — это данные временных рядов, и знать о популярных базах данных временных рядов, таких как InfluxDB.
+
+Полезная особенность баз данных временных рядов — эффективная агрегация и анализ больших объёмов данных по меткам.
+Например, InfluxDB строит индексы для каждой метки.
+
+При этом важно поддерживать низкую кардинальность меток, то есть не использовать слишком много уникальных меток.
+
+### **Архитектура высокого уровня**
+
+<div style="margin-left:3rem">
+    <img src="./images/high-level-design.png" alt="Архитектура высокого уровня" width="500" />
+</div>
+
+ - **Источник метрик**: например, серверы приложений, базы данных SQL, очереди сообщений и т. д.
+ - **Сборщик метрик**: собирает метрики и записывает их в базу данных временных рядов.
+ - **База данных временных рядов**: хранит метрики в виде временных рядов и предоставляет собственный интерфейс запросов для анализа больших объёмов метрик.
+ - **Сервис запросов**: упрощает выполнение запросов и получение данных из базы временных рядов. Если интерфейс базы достаточно мощный, этот сервис можно полностью заменить им.
+ - **Система оповещений**: отправляет уведомления в разные каналы оповещений.
+ - **Система визуализации**: показывает метрики в виде графиков и диаграмм.
 
 ---
 
-## Step 3: Design Deep Dive
-Let's deep dive into several of the more interesting parts of the system.
+## Шаг 3: Подробное проектирование
+Подробно рассмотрим несколько наиболее интересных частей системы.
 
-### **Metrics collection**
-For metrics collection, occasional data loss is not critical. It's acceptable for clients to fire and forget.
-
-<div style="margin-left:3rem">
-    <img src="./images/metrics-collection.png" alt="metrics-collection" width="500" />
-</div>
-
-There are two ways to implement metrics collection - pull or push.
-
-Here's how the pull model might look like:
+### **Сбор метрик**
+При сборе метрик периодическая потеря данных не критична. Клиенты могут отправлять данные без ожидания подтверждения.
 
 <div style="margin-left:3rem">
-    <img src="./images/pull-model-example.png" alt="pull-model-example" width="500" />
+    <img src="./images/metrics-collection.png" alt="Сбор метрик" width="500" />
 </div>
 
-For this solution, the metrics collector needs to maintain an up-to-date list of services and metrics endpoints.
-We can use Zookeeper or etcd for that purpose - service discovery.
+Собирать метрики можно двумя способами: по модели получения (pull) или отправки (push).
 
-Service discovery contains contains configuration rules about when and where to collect metrics from:
+Модель получения (pull) может выглядеть так:
 
 <div style="margin-left:3rem">
-    <img src="./images/service-discovery-example.png" alt="service-discovery-example" width="500" />
+    <img src="./images/pull-model-example.png" alt="Пример модели получения метрик (pull)" width="500" />
 </div>
 
-Here's a detailed explanation of the metrics collection flow:
+В этом решении сборщик метрик должен поддерживать актуальный список сервисов и конечных точек метрик.
+Для обнаружения сервисов можно использовать ZooKeeper или etcd.
+
+В системе обнаружения сервисов хранятся правила конфигурации, определяющие, когда и откуда собирать метрики:
 
 <div style="margin-left:3rem">
-    <img src="./images/metrics-collection-flow.png" alt="metrics-collection-flow" width="500" />
+    <img src="./images/service-discovery-example.png" alt="Пример обнаружения сервисов" width="500" />
 </div>
 
- - Metrics collector fetches configuration metadata from service discovery. This includes pulling interval, IP addresses, timeout & retry params.
- - Metrics collector pulls metrics data via a pre-defined http endpoint (eg `/metrics`). This is typically done by a client library.
- - Alternatively, the metrics collector can register a change event notification with the service discovery to be notified once the service endpoint changes.
- - Another option is for the metrics collector to periodically poll for metrics endpoint configuration changes.
-
-At our scale, a single metrics collector is not enough. There must be multiple instances. 
-However, there must also be some kind of synchronization among them so that two collectors don't collect the same metrics twice.
-
-One solution for this is to position collectors and servers on a consistent hash ring and associate a set of servers with a single collector only:
+Подробное описание процесса сбора метрик:
 
 <div style="margin-left:3rem">
-    <img src="./images/consistent-hash-ring.png" alt="consistent-hash-ring" width="500" />
+    <img src="./images/metrics-collection-flow.png" alt="Процесс сбора метрик" width="500" />
 </div>
 
-With the push model, on the other hand, services push their metrics to the metrics collector proactively:
+ - Сборщик метрик получает метаданные конфигурации из системы обнаружения сервисов: интервал опроса, IP-адреса, параметры тайм-аута и повтора.
+ - Сборщик получает метрики через заранее заданную HTTP-точку (например, `/metrics`). Обычно это выполняется клиентской библиотекой.
+ - В качестве альтернативы сборщик может зарегистрировать в системе обнаружения сервисов уведомление об изменении и получать его при смене конечной точки сервиса.
+ - Ещё один вариант — периодически проверять конфигурацию конечных точек метрик на изменения.
+
+При нашем масштабе одного сборщика метрик недостаточно: нужно несколько экземпляров.
+При этом они должны быть синхронизированы, чтобы два сборщика не собирали одни и те же метрики.
+
+Одно из решений — разместить сборщики и серверы на кольце согласованного хеширования и сопоставить каждый набор серверов только одному сборщику:
 
 <div style="margin-left:3rem">
-    <img src="./images/push-model-example.png" alt="push-model-example" width="500" />
+    <img src="./images/consistent-hash-ring.png" alt="Кольцо согласованного хеширования" width="500" />
 </div>
 
-In this approach, typically a collection agent is installed alongside service instances. 
-The agent collects metrics from the server and pushes them to the metrics collector.
+В модели отправки (push), напротив, сервисы самостоятельно передают свои метрики сборщику:
 
 <div style="margin-left:3rem">
-    <img src="./images/metrics-collector-agent.png" alt="metrics-collector-agent" width="500" />
+    <img src="./images/push-model-example.png" alt="Пример модели отправки метрик (push)" width="500" />
 </div>
 
-With this model, we can potentially aggregate metrics before sending them to the collector, which reduces the volume of data processed by the collector.
+В этом случае рядом с экземплярами сервиса обычно устанавливается агент сбора данных.
+Агент собирает метрики с сервера и отправляет их сборщику метрик.
 
-On the flip side, metrics collector can reject push requests as it can't handle the load. 
-It is important, hence, to add the collector to an auto-scaling group behind a load balancer.
+<div style="margin-left:3rem">
+    <img src="./images/metrics-collector-agent.png" alt="Агент сбора метрик" width="500" />
+</div>
 
-so which one is better? There are trade-offs between both approaches and different systems use different approaches:
- - Prometheus uses a pull architecture
- - Amazon Cloud Watch and Graphite use a push architecture
+При такой модели можно агрегировать метрики до отправки сборщику, уменьшая объём данных, который ему нужно обработать.
 
-Here are some of the main differences between push and pull:
-|                                        | Pull                                                                                                                                                                                                    | Push                                                                                                                                                                                                                                    |
+С другой стороны, сборщик метрик может отклонять запросы push, если не справляется с нагрузкой.
+Поэтому важно поместить сборщики за балансировщиком нагрузки в группу автомасштабирования.
+
+Какой подход лучше? У обоих подходов есть компромиссы, и разные системы используют разные варианты:
+ - Prometheus использует архитектуру pull;
+ - Amazon CloudWatch и Graphite используют архитектуру push.
+
+Ниже приведены основные различия между push и pull:
+|                                        | Получение (Pull)                                                                                                                                                                                        | Отправка (Push)                                                                                                                                                                                                                         |
 |----------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| Easy debugging                         | The /metrics endpoint on application servers used for pulling metrics can be used to view metrics at any time. You can even do this on your laptop. Pull wins.                                          | If the metrics collector doesn't receive metrics, the problem might be caused by network issues.                                                                                                                                        |
-| Health check                           | If an application server doesn't respond to the pull, you can quickly figure out if an application server is down. Pull wins.                                                                           | If the metrics collector doesn't receive metrics, the problem might be caused by network issues.                                                                                                                                        |
-| Short-lived jobs                       |                                                                                                                                                                                                         | Some of the batch jobs might be short-lived and don't last long enough to be pulled. Push wins. This can be fixed by introducing push gateways for the pull model [22].                                                                 |
-| Firewall or complicated network setups | Having servers pulling metrics requires all metric endpoints to be reachable. This is potentially problematic in multiple data center setups. It might require a more elaborate network infrastructure. | If the metrics collector is set up with a load balancer and an auto-scaling group, it is possible to receive data from anywhere. Push wins.                                                                                             |
-| Performance                            | Pull methods typically use TCP.                                                                                                                                                                         | Push methods typically use UDP. This means the push method provides lower-latency transports of metrics. The counterargument here is that the effort of establishing a TCP connection is small compared to sending the metrics payload. |
-| Data authenticity                      | Application servers to collect metrics from are defined in config files in advance. Metrics gathered from those servers are guaranteed to be authentic.                                                 | Any kind of client can push metrics to the metrics collector. This can be fixed by whitelisting servers from which to accept metrics, or by requiring authentication.                                                                   |
+| Простота отладки                         | Точку `/metrics` на серверах приложений, используемую для получения метрик, можно открыть в любое время, даже на собственном ноутбуке. Преимущество у pull.                                            | Если сборщик не получает метрики, причиной могут быть проблемы с сетью.                                                                                                                                                                 |
+| Проверка работоспособности               | Если сервер приложения не отвечает на запрос pull, можно быстро определить, что он недоступен. Преимущество у pull.                                                                                  | Если сборщик не получает метрики, причиной могут быть проблемы с сетью.                                                                                                                                                                 |
+| Краткоживущие задачи                     |                                                                                                                                                                                                         | Некоторые пакетные задания могут завершиться раньше, чем их успеют опросить. Преимущество у push. Для модели pull это можно исправить, добавив шлюзы push [22].                                                                          |
+| Межсетевые экраны и сложная сеть          | Для получения метрик серверам нужно иметь доступ ко всем конечным точкам. Это может быть проблемой при работе с несколькими ЦОД и потребовать более сложной сетевой инфраструктуры.                    | Если сборщик метрик размещён за балансировщиком нагрузки в группе автомасштабирования, данные можно получать откуда угодно. Преимущество у push.                                                                                         |
+| Производительность                        | В методах pull обычно используется TCP.                                                                                                                                                                 | В методах push обычно используется UDP. Поэтому передача метрик через push может иметь меньшую задержку. Однако затраты на установление TCP-соединения невелики по сравнению с передачей полезной нагрузки метрик.                         |
+| Подлинность данных                        | Серверы приложений, с которых собираются метрики, заранее указаны в конфигурационных файлах. Подлинность полученных от них метрик гарантирована.                                                        | Любой клиент может отправить метрики сборщику. Это можно исправить, разрешив приём метрик только от серверов из списка или потребовав аутентификацию.                                                                                    |
 
-There is no clear winner. A large organization probably needs to support both. There might not be a way to install a push agent in the first place.
+Однозначного победителя нет. Крупной организации, вероятно, потребуется поддерживать оба подхода. Иногда установить агент push вообще невозможно.
 
-### **Scale the metrics transmission pipeline**
-
-<div style="margin-left:3rem">
-    <img src="./images/metrics-transmission-pipeline.png" alt="metrics-transmission-pipeline" width="500" />
-</div>
-
-The metrics collector is provisioned in an auto-scaling group, regardless if we use the push or pull model.
-
-There is a chance of data loss if the time-series DB is down, however. To mitigate this, we'll provision a queuing mechanism:
+### **Масштабирование конвейера передачи метрик**
 
 <div style="margin-left:3rem">
-    <img src="./images/queuing-mechanism.png" alt="queuing-mechanism" width="500" />
+    <img src="./images/metrics-transmission-pipeline.png" alt="Конвейер передачи метрик" width="500" />
 </div>
 
- - Metrics collectors push metrics data into kafka
- - Consumers or stream processing services such as Apache Storm, Flink or Spark process the data and push it to the time-series DB
+Независимо от того, используется модель push или pull, сборщики метрик развёртываются в группе автомасштабирования.
 
-This approach has several advantages:
- - Kafka is used as a highly-reliable and scalable distributed message platform
- - It decouples data collection and data processing from one another
- - It can prevent data loss by retaining the data in Kafka
-
-Kafka can be configured with one partition per metric name, so that consumers can aggregate data by metric names.
-To scale this, we can further partition by tags/labels and categorize/prioritize metrics to be collected first.
+Однако при отказе базы данных временных рядов возможна потеря данных. Чтобы снизить этот риск, добавим механизм очередей:
 
 <div style="margin-left:3rem">
-    <img src="./images/metrics-collection-kafka.png" alt="metrics-collection-kafka" width="500" />
+    <img src="./images/queuing-mechanism.png" alt="Механизм очередей" width="500" />
 </div>
 
-The main downside of using Kafka for this problem is the maintenance/operation overhead.
-An alternative is to use a large-scale ingestion system like [Gorilla](https://www.vldb.org/pvldb/vol8/p1816-teller.pdf).
-It can be argued that using that would be as scalable as using Kafka for queuing.
+ - Сборщики метрик отправляют данные в Kafka.
+ - Потребители или сервисы потоковой обработки, например Apache Storm, Flink или Spark, обрабатывают данные и записывают их в базу данных временных рядов.
 
-### **Where aggregations can happen**
-Metrics can be aggregated at several places. There are trade-offs between different choices:
- - **Collection agent**: client-side collection agent only supports simple aggregation logic. Eg collect a counter for 1m and send it to the metrics collector.
- - **Ingestion pipeline**: To aggregate data before writing to the DB, we need a stream processing engine like Flink. This reduces write volume, but we lose data precision as we don't store raw data.
- - **Query side**: We can aggregate data when we run queries via our visualization system. There is no data loss, but queries can be slow due to a lot of data processing.
+У этого подхода есть несколько преимуществ:
+ - Kafka выступает высоконадёжной и масштабируемой распределённой платформой обмена сообщениями.
+ - Сбор данных и их обработка становятся независимыми друг от друга.
+ - Хранение данных в Kafka помогает предотвратить их потерю.
 
-### **Query Service**
-Having a separate query service from the time-series DB decouples the visualization and alerting system from the database, which enables us to decouple the DB from clients and change it at will.
-
-We can add a Cache layer here to reduce the load to the time-series database:
+Kafka можно настроить так, чтобы каждой метрике соответствовал отдельный раздел: тогда потребители смогут агрегировать данные по именам метрик.
+Для масштабирования можно дополнительно разделять данные по тегам или меткам, а также категоризировать метрики и задавать приоритет их сбора.
 
 <div style="margin-left:3rem">
-    <img src="./images/cache-layer-query-service.png" alt="cache-layer-query-service" width="500" />
+    <img src="./images/metrics-collection-kafka.png" alt="Сбор метрик с использованием Kafka" width="500" />
 </div>
 
-We can also avoid adding a query service altogether as most visualization and alerting systems have powerful plugins to integrate with most time-series databases.
-With a well-chosen time-series DB, we might not need to introduce our own caching layer as well.
+Главный недостаток использования Kafka в этой задаче — накладные расходы на обслуживание и эксплуатацию.
+В качестве альтернативы можно использовать крупномасштабную систему приёма данных, например [Gorilla](https://www.vldb.org/pvldb/vol8/p1816-teller.pdf).
+Можно утверждать, что такое решение будет столь же масштабируемым, как Kafka в роли очереди.
 
-Most time-series DBs don't support SQL simply because it is ineffective for querying time-series data. Here's an example SQL query for computing an exponential moving average:
+### **Где можно выполнять агрегацию**
+Агрегировать метрики можно в нескольких местах. У каждого варианта есть свои компромиссы:
+ - **Агент сбора данных**: клиентский агент поддерживает только простую логику агрегации. Например, он может собирать показания счётчика в течение 1 минуты и отправлять их сборщику метрик.
+ - **Конвейер приёма данных**: для агрегации до записи в базу данных нужен движок потоковой обработки, например Flink. Это уменьшает объём записи, но приводит к потере точности, поскольку исходные данные не сохраняются.
+ - **Сторона запросов**: данные можно агрегировать при выполнении запросов через систему визуализации. Потери данных нет, но запросы могут выполняться медленно из-за большого объёма обработки.
+
+### **Сервис запросов**
+Отдельный от базы данных временных рядов сервис запросов изолирует системы визуализации и оповещений от базы данных. Это также позволяет отделить базу данных от клиентов и при необходимости заменять её.
+
+Здесь можно добавить слой кэширования, чтобы снизить нагрузку на базу данных временных рядов:
+
+<div style="margin-left:3rem">
+    <img src="./images/cache-layer-query-service.png" alt="Слой кэширования сервиса запросов" width="500" />
+</div>
+
+Можно и вовсе обойтись без сервиса запросов: у большинства систем визуализации и оповещений есть мощные плагины для интеграции с распространёнными базами данных временных рядов.
+Если выбрать подходящую базу данных временных рядов, может не понадобиться и собственный слой кэширования.
+
+Большинство баз данных временных рядов не поддерживают SQL, поскольку он неэффективен для запросов к временным рядам. Вот пример SQL-запроса для вычисления экспоненциального скользящего среднего:
 
 ```
 select id,
@@ -319,7 +319,7 @@ from (
 order by time_read;
 ```
 
-Here's the same query in Flux - query language used in InfluxDB:
+Тот же запрос на Flux — языке запросов, используемом в InfluxDB:
 
 ```
 from(db:"telegraf")
@@ -328,32 +328,32 @@ from(db:"telegraf")
   |> exponentialMovingAverage(size:-10s)
 ```
 
-### **Storage layer**
-It is important to choose the time-series database carefully.
+### **Слой хранения**
+Важно тщательно выбрать базу данных временных рядов.
 
-According to research published by Facebook, ~85% of queries to the operational store were for data from the past 26h.
+Согласно исследованию Facebook, ~85% запросов к оперативному хранилищу относились к данным за последние 26 часов.
 
-If we choose a database, which harnesses this property, it could have significant impact on system performance. InfluxDB is one such option.
+Выбор базы данных, использующей эту особенность, может значительно повлиять на производительность системы. Один из подходящих вариантов — InfluxDB.
 
-Regardless of the database we choose, there are some optimizations we might employ.
+Независимо от выбранной базы данных, можно применить несколько оптимизаций.
 
-Data encoding and compression can significantly reduce the size of data. Those features are usually built into a good time-series database.
+Кодирование и сжатие данных могут значительно уменьшить их объём. Эти возможности обычно встроены в качественные базы данных временных рядов.
 
 <div style="margin-left:3rem">
-    <img src="./images/double-delta-encoding.png" alt="double-delta-encoding" width="500" />
+    <img src="./images/double-delta-encoding.png" alt="Двойное дельта-кодирование" width="500" />
 </div>
 
-In the above example, instead of storing full timestamps, we can store timestamp deltas.
+В приведённом выше примере вместо полных временных меток можно хранить разницу между ними.
 
-Another technique we can employ is down-sampling - converting high-resolution data to low-resolution in order to reduce disk usage.
+Ещё один способ оптимизации — понижение разрешения: преобразование данных высокого разрешения в данные низкого разрешения для экономии места на диске.
 
-We can use that for old data and make the rules configurable by data scientists, eg:
- - 7d - no down-sampling
- - 30d - down-sample to 1min
- - 1y - down-sample to 1h
+Это можно применять к старым данным, а правила сделать настраиваемыми для специалистов по данным, например:
+ - 7d — без понижения разрешения;
+ - 30d — понизить разрешение до 1min;
+ - 1y — понизить разрешение до 1h.
 
-For example, here's a 10-second resolution metrics table:
-| metric | timestamp            | hostname | Metric_value |
+Например, таблица метрик с разрешением 10 секунд:
+| метрика | временная метка      | имя хоста | значение метрики |
 |--------|----------------------|----------|--------------|
 | cpu    | 2021-10-24T19:00:00Z | host-a   | 10           |
 | cpu    | 2021-10-24T19:00:10Z | host-a   | 16           |
@@ -362,21 +362,21 @@ For example, here's a 10-second resolution metrics table:
 | cpu    | 2021-10-24T19:00:40Z | host-a   | 20           |
 | cpu    | 2021-10-24T19:00:50Z | host-a   | 30           |
 
-down-sampled to 30-second resolution:
-| metric | timestamp            | hostname | Metric_value (avg) |
+После понижения разрешения до 30 секунд:
+| метрика | временная метка      | имя хоста | значение метрики (среднее) |
 |--------|----------------------|----------|--------------------|
 | cpu    | 2021-10-24T19:00:00Z | host-a   | 19                 |
 | cpu    | 2021-10-24T19:00:30Z | host-a   | 25                 |
 
-Finally, we can also use cold storage to use old data, which is no longer used. The financial cost for cold storage is much lower.
+Наконец, старые данные, к которым больше не обращаются, можно перенести в холодное хранилище. Его стоимость значительно ниже.
 
-### **Alerting system**
+### **Система оповещений**
 
 <div style="margin-left:3rem">
-    <img src="./images/alerting-system.png" alt="alerting-system" width="500" />
+    <img src="./images/alerting-system.png" alt="Система оповещений" width="500" />
 </div>
 
-Configuration is loaded to cache servers. Rules are typically defined in YAML format. Here's an example:
+Конфигурация загружается на серверы кэша. Обычно правила задаются в формате YAML. Пример:
 
 ```
 - name: instance_down
@@ -390,35 +390,35 @@ Configuration is loaded to cache servers. Rules are typically defined in YAML fo
       severity: page
 ```
 
-The alert manager fetches alert configurations from cache. Based on configuration rules, it also calls the query service at a predefined interval.
-If a rule is met, an alert event is created.
+Менеджер оповещений получает конфигурации оповещений из кэша. Согласно правилам конфигурации он также обращается к сервису запросов через заданные интервалы.
+При выполнении правила создаётся событие оповещения.
 
-Other responsibilities of the alert manager are:
- - Filtering, merging and deduplicating alerts. Eg if an alert of a single instance is triggered multiple times, only one alert event is generated.
- - Access control - it is important to restrict alert-management operations to certain individuals only
- - Retry - the manager ensures that the alert is propagated at least once.
+Другие обязанности менеджера оповещений:
+ - фильтрация, объединение и удаление дубликатов оповещений. Например, если для одного экземпляра оповещение срабатывает несколько раз, создаётся только одно событие;
+ - контроль доступа: важно разрешить управление оповещениями только определённым пользователям;
+ - повторные попытки: менеджер обеспечивает доставку оповещения как минимум один раз.
 
-The alert store is a key-value database, like Cassandra, which keeps the state of all alerts. It ensures a notification is sent at least once.
-Once an alert is triggered, it is published to Kafka.
+Хранилище оповещений — база данных «ключ — значение», например Cassandra, где сохраняются состояния всех оповещений. Оно обеспечивает отправку уведомления как минимум один раз.
+После срабатывания оповещение публикуется в Kafka.
 
-Finally, alert consumers pull alerts data from Kafka and send notifications over to different channels - Email, text message, PagerDuty, webhooks.
+Наконец, потребители оповещений получают данные из Kafka и отправляют уведомления по разным каналам: электронной почте, SMS, PagerDuty или вебхукам.
 
-In the real-world, there are many off-the-shelf solutions for alerting systems. It is difficult to justify building your own system in-house.
+В реальности существует множество готовых систем оповещений, поэтому сложно обосновать разработку собственной внутренней системы.
 
-### **Visualization system**
-The visualization system shows metrics and alerts over a time period. Here's an dashboard built with Grafana:
+### **Система визуализации**
+Система визуализации показывает метрики и оповещения за выбранный период. Ниже приведена панель мониторинга, созданная с помощью Grafana:
 
 <div style="margin-left:3rem">
-    <img src="./images/grafana-dashboard.png" alt="grafana-dashboard" width="500" />
+    <img src="./images/grafana-dashboard.png" alt="Панель мониторинга Grafana" width="500" />
 </div>
 
-A high-quality visualization system is very hard to build. It is hard to justify not using an off-the-shelf solution like Grafana.
+Качественную систему визуализации сложно разработать. Трудно обосновать отказ от готового решения, например Grafana.
 
 ---
 
-## Step 4: Wrap up
-Here's our final design:
+## Шаг 4: Итоги
+Итоговая архитектура:
 
 <div style="margin-left:3rem">
-    <img src="./images/final-design.png" alt="final-design" width="500" />
+    <img src="./images/final-design.png" alt="Итоговая архитектура" width="500" />
 </div>

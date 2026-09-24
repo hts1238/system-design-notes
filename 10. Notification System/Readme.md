@@ -1,142 +1,141 @@
-# Chapter 10: Design a Notification System
+# Глава 10: Проектирование системы уведомлений
 
-## Introduction
-A **notification system** is essential for modern applications, providing timely updates like product notifications, events, offers, and alerts. Notifications can be sent through:
-1. **Push notifications** (mobile or desktop),
-2. **SMS messages**, and
-3. **Emails**.
+## Введение
+**Система уведомлений** необходима современным приложениям для своевременной отправки обновлений, например уведомлений о товарах, событиях, предложениях и предупреждениях. Уведомления можно отправлять через:
+1. **Push-уведомления** (на мобильные устройства или компьютеры),
+2. **SMS-сообщения** и
+3. **Электронную почту**.
 
-The chapter focuses on designing a scalable system capable of sending millions of notifications daily.
-
----
-
-## Step 1: Understanding the Problem
-### Requirements
-- **Notification Types:** Push notifications, SMS, and Emails.
-- **Delivery:** Soft real-time system with minimal delays.
-- **Platforms:** iOS, Android, and desktop.
-- **Triggers:** Notifications can be triggered by client applications or scheduled on servers.
-- **Scale:**
-  - **Push Notifications:** 10 million/day,
-  - **SMS:** 1 million/day,
-  - **Emails:** 5 million/day.
-- **Opt-out Support:** Users can disable specific notification types.
+В этой главе рассматривается проектирование масштабируемой системы, способной ежедневно отправлять миллионы уведомлений.
 
 ---
 
-## Step 2: High-Level Design
+## Шаг 1: Понимание задачи
+### Требования
+- **Типы уведомлений:** push-уведомления, SMS и электронная почта.
+- **Доставка:** система реального времени с мягкими ограничениями и минимальными задержками.
+- **Платформы:** iOS, Android и компьютеры.
+- **Триггеры:** уведомления могут запускаться клиентскими приложениями или планироваться на серверах.
+- **Масштаб:**
+  - **Push-уведомления:** 10 миллионов в день,
+  - **SMS:** 1 миллион в день,
+  - **Электронная почта:** 5 миллионов в день.
+- **Возможность отказа от получения:** пользователи могут отключать отдельные типы уведомлений.
 
-### Components
+---
 
-1. **Notification Types:**
-   - **iOS Push Notifications:** Use **Apple Push Notification Service (APNS)**.
-   - **Android Push Notifications:** Use **Firebase Cloud Messaging (FCM)**.
-   - **SMS Messages:** Third-party services like Twilio or Nexmo.
-   - **Emails:** Commercial email services like SendGrid or Mailchimp.
+## Шаг 2: Высокоуровневое проектирование
 
-2. **Contact Info Gathering:**
+### Компоненты
+
+1. **Типы уведомлений:**
+   - **Push-уведомления iOS:** используйте **Apple Push Notification Service (APNS)**.
+   - **Push-уведомления Android:** используйте **Firebase Cloud Messaging (FCM)**.
+   - **SMS-сообщения:** сторонние сервисы, например Twilio или Nexmo.
+   - **Электронная почта:** коммерческие почтовые сервисы, например SendGrid или Mailchimp.
+
+2. **Сбор контактной информации:**
    <div style="margin-left:3rem">
-      <img src="./images/contact-info-gathering.png" alt="Contact Info Gathering" width="500">
+      <img src="./images/contact-info-gathering.png" alt="Сбор контактной информации" width="500">
    </div>
 
-   - Collect device tokens, phone numbers, or email addresses during app installation or signup.
-   - Store contact info in the database:
-     - **Device Tokens Table:** For push notifications.
-     - **User Table:** For emails and phone numbers.
+   - Собирайте токены устройств, номера телефонов или адреса электронной почты при установке приложения или регистрации.
+   - Храните контактную информацию в базе данных:
+     - **Таблица токенов устройств:** для push-уведомлений.
+     - **Таблица пользователей:** для адресов электронной почты и номеров телефонов.
 
 
-3. **Notification Sending Flow:**
+3. **Процесс отправки уведомлений:**
 
    <div style="margin-left:3rem">
-      <img src="./images/high-level-design.png" alt="High Level Design" width="500">
+      <img src="./images/high-level-design.png" alt="Высокоуровневое проектирование" width="500">
    </div>
 
-   - **Trigger Services:**
-      - Generate events to initiate notifications (e.g., billing reminders, shipping updates).
-      - A service can be a micro-service, a cron job, or a distributed system that triggers notification sending events.
-   - **Notification Server:** 
-      - Provide APIs for services to send notifications. 
-      - Carry out basic validations to verify emails, phone numbers.
-      - Query the database or cache to fetch data needed to render a notification.
-   - **Third-Party Services:** Deliver notifications to users.
+   - **Сервисы-триггеры:**
+      - Создают события для запуска уведомлений (например, напоминания об оплате или обновления статуса доставки).
+      - Сервисом может быть микросервис, задание cron или распределённая система, инициирующая отправку уведомлений.
+   - **Сервер уведомлений:**
+      - Предоставляет API для отправки уведомлений другими сервисами.
+      - Выполняет базовую проверку адресов электронной почты и номеров телефонов.
+      - Запрашивает в базе данных или кэше данные, необходимые для формирования уведомления.
+   - **Сторонние сервисы:** доставляют уведомления пользователям.
 
      
 
-### Challenges in Initial Design
-- **Single Point of Failure (SPOF):** One notification server can crash the entire system.
-- **Scalability Issues:** Hard to scale databases, caches, and processing components independently.
-- **Performance Bottlenecks:** High resource demands for sending notifications.
+### Недостатки первоначального проекта
+- **Единая точка отказа (SPOF):** сбой одного сервера уведомлений может нарушить работу всей системы.
+- **Проблемы масштабирования:** сложно независимо масштабировать базы данных, кэши и компоненты обработки.
+- **Узкие места производительности:** отправка уведомлений требует значительных ресурсов.
 
-### Improved Design
+### Улучшенный проект
 
    <div style="margin-left:3rem">
-      <img src="./images/improved-design.png" alt="Improved Design" width="500">
+      <img src="./images/improved-design.png" alt="Улучшенный проект" width="500">
    </div>
 
-- Move databases and caches out of the notification server.
-- Introduce **horizontal scaling** with multiple notification servers.
-- Use **message queues** to decouple system components.
-   -  Message queues serve as buffers when high volumes of notifications are to be sent out.
-- Add workers that pull notification events from message queues and send them to corresponding third party services.
+- Вынесите базы данных и кэши за пределы сервера уведомлений.
+- Обеспечьте **горизонтальное масштабирование** с помощью нескольких серверов уведомлений.
+- Используйте **очереди сообщений**, чтобы разделить компоненты системы.
+   - Очереди сообщений служат буферами при отправке большого количества уведомлений.
+- Добавьте обработчики, которые получают события из очередей сообщений и отправляют их соответствующим сторонним сервисам.
 
    
 
 ---
 
-## Step 3: Design Deep Dive
+## Шаг 3: Подробное проектирование
 
-### Reliability
-1. **Prevent Data Loss:** 
+### Надёжность
+1. **Предотвращение потери данных:**
    <div style="margin-left:3rem">
-   <img src="./images/data-loss.png" alt="Data Loss" width="400">
+   <img src="./images/data-loss.png" alt="Потеря данных" width="400">
    </div>
 
-   - Persist notification data in a database and implement a retry mechanism. 
-   - The Notification log database is included for data persistence.
+   - Сохраняйте данные уведомлений в базе данных и реализуйте механизм повторных попыток.
+   - Для сохранения данных используется база данных журнала уведомлений.
 
 
-2. **Deduplication:** 
-   - Check event IDs to avoid sending duplicate notifications.
-   - When a notification event first arrives, check if it is seen before by checking the event ID.
-If seen before discard it, otherwise send out the notification. 
+2. **Устранение дубликатов:**
+   - Проверяйте ID событий, чтобы не отправлять повторные уведомления.
+   - При поступлении события уведомления проверьте по его ID, обрабатывалось ли оно раньше.
+Если событие уже встречалось, отбросьте его, иначе отправьте уведомление.
 
 
-### Additional Components
+### Дополнительные компоненты
    <div style="margin-left:3rem">
-   <img src="./images/events-tracking.png" alt="Events Tracking" width="400">
+   <img src="./images/events-tracking.png" alt="Отслеживание событий" width="400">
    </div>
 
-1. **Notification Templates:** Preformatted templates for consistent and efficient notifications.
-2. **Notification Settings:**
-   - Users can opt-in or opt-out for specific channels (push, SMS, or email).
-   - Stored in a dedicated notification settings table.
-3. **Rate Limiting:** Cap the frequency of notifications sent to users.
-4. **Retry Mechanism:** Retry sending notifications if third-party services fail.
-5. **Monitoring Queues:** Track queued notifications to scale workers dynamically.
-6. **Event Tracking:** Collect metrics like open rate, click rate, and engagement.
+1. **Шаблоны уведомлений:** заранее подготовленные шаблоны для единообразной и эффективной отправки уведомлений.
+2. **Настройки уведомлений:**
+   - Пользователи могут подписываться на отдельные каналы (push, SMS или электронную почту) и отказываться от них.
+   - Настройки хранятся в отдельной таблице.
+3. **Ограничение частоты:** ограничивайте частоту отправки уведомлений пользователям.
+4. **Механизм повторных попыток:** повторяйте отправку уведомлений при сбоях сторонних сервисов.
+5. **Мониторинг очередей:** отслеживайте уведомления в очередях, чтобы динамически масштабировать обработчики.
+6. **Отслеживание событий:** собирайте метрики, например долю открытий, количество переходов и вовлечённость.
 
 
-### Security
-- Use **AppKey** and **AppSecret** to authenticate and secure APIs for push notifications.
+### Безопасность
+- Используйте **AppKey** и **AppSecret** для аутентификации и защиты API push-уведомлений.
 
-### Notification Flow
+### Процесс отправки уведомлений
 
    <div style="margin-left:3rem">
-   <img src="./images/updated-design.png" alt="Updated Design" width="500">
+   <img src="./images/updated-design.png" alt="Обновлённый проект" width="500">
    </div>
 
-1. Trigger services call APIs to send notifications.
-2. Notification servers validate requests and fetch metadata from caches or databases.
-3. Notification events are sent to message queues.
-4. Workers process events and interact with third-party services.
-5. Third-party services deliver notifications to users.
+1. Сервисы-триггеры вызывают API для отправки уведомлений.
+2. Серверы уведомлений проверяют запросы и получают метаданные из кэшей или баз данных.
+3. События уведомлений отправляются в очереди сообщений.
+4. Обработчики обрабатывают события и взаимодействуют со сторонними сервисами.
+5. Сторонние сервисы доставляют уведомления пользователям.
 
 
 ---
 
-## Key Optimizations
-1. **Horizontal Scaling:** Add more notification servers for load distribution.
-2. **Message Queues:** Decouple processing to handle high volumes.
-3. **Caching:** Reduce latency by caching frequently accessed data.
-4. **Distributed Crawling:** Optimize message delivery geographically for better performance.
-
+## Основные оптимизации
+1. **Горизонтальное масштабирование:** добавляйте серверы уведомлений для распределения нагрузки.
+2. **Очереди сообщений:** разделяйте обработку для работы с большими объёмами.
+3. **Кэширование:** снижайте задержку, кэшируя часто запрашиваемые данные.
+4. **Распределённый краулинг:** оптимизируйте географическое распределение доставки сообщений для повышения производительности.

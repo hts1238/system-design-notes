@@ -1,45 +1,45 @@
-# Chapter 27: Digital Wallet
+# Глава 27: Цифровой кошелёк
 
-## Introduction
-**Payment platforms** usually have a **wallet service**, where they allow clients to store funds within the application, which they can withdraw later.
+## Введение
+На **платёжных платформах** обычно есть **сервис кошелька**, позволяющий клиентам хранить средства в приложении, а затем выводить их.
 
-You can also use it to pay for goods & services or transfer money to other users, who use the **digital wallet** service. That can be faster and cheaper than doing it via normal payment rails.
+Кошелёк также можно использовать для оплаты товаров и услуг или перевода денег другим пользователям сервиса **цифрового кошелька**. Это может быть быстрее и дешевле, чем использовать обычные платёжные каналы.
 
 <div style="margin-left:3rem">
-    <img src="./images/digital-wallet.png" alt="digital-wallet" width="500" />
+    <img src="./images/digital-wallet.png" alt="цифровой кошелёк" width="500" />
 </div>
 
 ---
 
-## Step 1: Understand the Problem and Establish Design Scope
- * C: Should we only focus on transfers between digital wallets? Should we support any other operations?
- * I: Let's focus on transfers between digital wallets for now.
- * C: How many transactions per second does the system need to support?
- * I: Let's assume 1mil TPS
- * C: A digital wallet has strict correctness requirements. Can we assume transactional guarantees are sufficient?
- * I: Sounds good
- * C: Do we need to prove correctness?
- * I: We can do that via reconciliation, but that only detects discrepancies vs. showing us the root cause for them. Instead, we want to be able to replay data from the beginning to reconstruct the history.
- * C: Can we assume availability requirement is 99.99%?
- * I: Yes
- * C: Do we need to take foreign exchange into consideration?
- * I: No, it's out of scope
+## Шаг 1: Разберёмся в задаче и определим рамки проектирования
+ * C: Сосредоточимся только на переводах между цифровыми кошельками или нужно поддерживать и другие операции?
+ * I: Пока сосредоточимся на переводах между цифровыми кошельками.
+ * C: Сколько транзакций в секунду должна поддерживать система?
+ * I: Предположим, что 1 млн TPS.
+ * C: Для цифрового кошелька критически важна корректность. Можно считать, что достаточно транзакционных гарантий?
+ * I: Подходит.
+ * C: Нужно ли доказывать корректность?
+ * I: Это можно делать с помощью сверки, но она лишь обнаруживает расхождения, а не показывает их первопричину. Вместо этого нужно иметь возможность повторно обработать данные с самого начала и восстановить историю.
+ * C: Можно считать, что требование к доступности составляет 99,99%?
+ * I: Да.
+ * C: Нужно ли учитывать обмен валют?
+ * I: Нет, это выходит за рамки задачи.
 
-Here's what we have to support in summary:
- * Support balance transfers between two accounts
- * Support 1mil TPS
- * Reliability is 99.99%
- * Support transactions
- * Support reproducibility
+Кратко перечислим требования:
+ * Поддержка переводов баланса между двумя счетами.
+ * Поддержка 1 млн TPS.
+ * Надёжность 99,99%.
+ * Поддержка транзакций.
+ * Поддержка воспроизведения истории.
 
-### **Back-of-the-envelope estimation**
-A traditional relational database, provisioned in the cloud can support ~1000 TPS.
+### **Приблизительная оценка**
+Традиционная реляционная база данных, развёрнутая в облаке, может поддерживать около 1000 TPS.
 
-In order to reach 1mil TPS, we'd need 1000 database nodes. But if each transfer has two legs, then we actually need to support 2mil TPS.
+Чтобы достичь 1 млн TPS, потребуется 1000 узлов базы данных. Но у каждого перевода две стороны, поэтому фактически нужно поддерживать 2 млн TPS.
 
-One of our design goals would be to increase the TPS a single node can handle so that we can have less database nodes.
+Одна из целей проектирования — увеличить TPS, обрабатываемый одним узлом, чтобы уменьшить общее число узлов базы данных.
 
-| Per-node TPS | Node Number |
+| TPS на узел | Число узлов |
 |--------------|-------------|
 | 100          | 20,000      |
 | 1,000        | 2,000       |
@@ -47,17 +47,17 @@ One of our design goals would be to increase the TPS a single node can handle so
 
 ---
 
-## Step 2: Propose High-Level Design and Get Buy-In
+## Шаг 2: Предложим архитектуру верхнего уровня и согласуем её
 
-### **API Design**
-We only need to support one endpoint for this interview:
+### **Проектирование API**
+Для этой задачи достаточно поддерживать одну конечную точку:
 ```
-POST /v1/wallet/balance_transfer - transfers balance from one wallet to another
+POST /v1/wallet/balance_transfer - переводит средства с одного кошелька на другой
 ```
 
-Request parameters - from_account, to_account, amount (string to not lose precision), currency, transaction_id (idempotency key).
+Параметры запроса: from_account, to_account, amount (string, чтобы не терять точность), currency, transaction_id (ключ идемпотентности).
 
-Sample response:
+Пример ответа:
 ```
 {
     "status": "success"
@@ -65,357 +65,357 @@ Sample response:
 }
 ```
 
-### **In-memory sharding solution**
-Our wallet application maintains account balances for every user account.
+### **Шардирование в памяти**
+Приложение кошелька хранит баланс каждого пользовательского счёта.
 
-One good data structure to represent this is a `map<user_id, balance>`, which can be implemented using an in-memory Redis store.
+Для этого подойдёт структура данных `map<user_id, balance>`, которую можно реализовать с помощью хранилища Redis в памяти.
 
-Since one redis node cannot withstand 1mil TPS, we need to partition our redis cluster into multiple nodes.
+Поскольку один узел Redis не выдержит 1 млн TPS, необходимо распределить кластер Redis по нескольким узлам.
 
-Example partitioning algorithm:
+Пример алгоритма разбиения:
 ```
 String accountID = "A";
 Int partitionNumber = 7;
 Int myPartition = accountID.hashCode() % partitionNumber;
 ```
 
-Zookeeper can be used to store the number of partitions and addresses of redis nodes as it's a highly-available configuration storage. 
+Число разделов и адреса узлов Redis можно хранить в Zookeeper — высокодоступном хранилище конфигурации.
 
-Finally, a wallet service is a stateless service responsible for carrying out transfer operations. It can easily scale horizontally:
-
-<div style="margin-left:3rem">
-    <img src="./images/wallet-service.png" alt="wallet-service" width="500" />
-</div>
-
-Although this solution addresses scalability concerns, it doesn't allow us to execute balance transfers atomically.
-
-### **Distributed transactions**
-One approach for handling transactions is to use the two-phase commit protocol on top of standard, sharded relational databases:
+Наконец, сервис кошелька — это stateless-сервис, отвечающий за выполнение переводов. Его легко масштабировать горизонтально:
 
 <div style="margin-left:3rem">
-    <img src="./images/distributed-transactions-relational-dbs.png" alt="distributed-transactions-relational-dbs" width="500" />
+    <img src="./images/wallet-service.png" alt="сервис кошелька" width="500" />
 </div>
 
-Here's how the two-phase commit (2PC) protocol works:
+Хотя это решение отвечает требованиям масштабируемости, оно не позволяет выполнять переводы средств атомарно.
+
+### **Распределённые транзакции**
+Один из способов обработки транзакций — использовать протокол двухфазной фиксации поверх стандартных реляционных баз данных с шардингом:
 
 <div style="margin-left:3rem">
-    <img src="./images/2pc-protocol.png" alt="2pc-protocol" width="500" />
+    <img src="./images/distributed-transactions-relational-dbs.png" alt="распределённые транзакции в реляционных базах данных" width="500" />
 </div>
 
- * Coordinator (wallet service) performs read and write operations on multiple databases as normal
- * When application is ready to commit the transaction, coordinator asks all databases to prepare it
- * If all databases replied with a "yes", then the coordinator asks the databases to commit the transaction.
- * Otherwise, all databases are asked to abort the transaction
+Протокол двухфазной фиксации (2PC) работает следующим образом:
 
-Downsides to the 2PC approach:
- * Not performant due to lock contention
- * The coordinator is a single point of failure
+<div style="margin-left:3rem">
+    <img src="./images/2pc-protocol.png" alt="протокол 2PC" width="500" />
+</div>
 
-### **Distributed transaction using Try-Confirm/Cancel (TC/C)**
-TC/C is a variation of the 2PC protocol, which works with compensating transactions:
- * Coordinator asks all databases to reserve resources for the transaction
- * Coordinator collects replies from DBs - if yes, DBs are asked to try-confirm. If no, DBs are asked to try-cancel.
+ * Координатор (сервис кошелька) выполняет операции чтения и записи в нескольких базах данных обычным образом.
+ * Когда приложение готово зафиксировать транзакцию, координатор просит все базы данных подготовить её.
+ * Если все базы данных ответили «да», координатор просит их зафиксировать транзакцию.
+ * Иначе все базы данных получают запрос отменить транзакцию.
 
-One important difference between TC/C and 2PC is that 2PC performs a single transaction, whereas in TC/C, there are two independent transactions.
+Недостатки подхода 2PC:
+ * Низкая производительность из-за конкуренции за блокировки.
+ * Координатор является единой точкой отказа.
 
-Here's how TC/C works in phases:
+### **Распределённая транзакция с использованием Try-Confirm/Cancel (TC/C)**
+TC/C — разновидность протокола 2PC, использующая компенсирующие транзакции:
+ * Координатор просит все базы данных зарезервировать ресурсы для транзакции.
+ * Координатор собирает ответы баз данных: если получены ответы «да», базы данных получают команду try-confirm; если «нет» — команду try-cancel.
 
-| Phase | Operation | A                   | C                   |
+Важное отличие TC/C от 2PC состоит в том, что 2PC выполняет одну транзакцию, а TC/C — две независимые транзакции.
+
+TC/C выполняется в несколько этапов:
+
+| Этап | Операция | A                   | C                   |
 |-------|-----------|---------------------|---------------------|
-| 1     | Try       | Balance change: -$1 | Do nothing          |
-| 2     | Confirm   | Do nothing          | Balance change: +$1 |
-|       | Cancel    | Balance change: +$1 | Do Nothing          |
+| 1     | Try       | Изменение баланса: -$1 | Ничего не делать    |
+| 2     | Confirm   | Ничего не делать     | Изменить баланс: +$1 |
+|       | Cancel    | Изменение баланса: +$1 | Ничего не делать    |
 
-Phase 1 - try:
-
-<div style="margin-left:3rem">
-    <img src="./images/try-phase.png" alt="try-phase" width="500" />
-</div>
-
- * coordinator starts local transaction in A's DB to reduce A's balance by 1$
- * C's DB is given a NOP instruction, which does nothing
-
-Phase 2a - confirm:
+Этап 1 — try:
 
 <div style="margin-left:3rem">
-    <img src="./images/confirm-phase.png" alt="confirm-phase" width="500" />
+    <img src="./images/try-phase.png" alt="этап Try" width="500" />
 </div>
 
- * if both DBs replied with "yes", confirm phase starts.
- * A's DB receives NOP, whereas C's DB is instructed to increase C's balance by 1$ (local transaction)
+ * Координатор запускает локальную транзакцию в БД A, чтобы уменьшить баланс A на 1$.
+ * БД C получает инструкцию NOP, которая ничего не делает.
 
-Phase 2b - cancel:
+Этап 2a — confirm:
 
 <div style="margin-left:3rem">
-    <img src="./images/cancel-phase.png" alt="cancel-phase" width="500" />
+    <img src="./images/confirm-phase.png" alt="этап Confirm" width="500" />
 </div>
 
- * If any of the operations in phase 1 fails, the cancel phase starts.
- * A's DB is instructed to increase A's balance by 1$, C's DB receives NOP
+ * Если обе БД ответили «да», начинается этап confirm.
+ * БД A получает NOP, а БД C — команду увеличить баланс C на 1$ (локальная транзакция).
 
-Here's a comparison between 2PC and TC/C:
+Этап 2b — cancel:
 
-|      | First Phase                                            | Second Phase: success              | Second Phase: fail                        |
+<div style="margin-left:3rem">
+    <img src="./images/cancel-phase.png" alt="этап Cancel" width="500" />
+</div>
+
+ * Если какая-либо операция на этапе 1 завершается сбоем, начинается этап cancel.
+ * БД A получает команду увеличить баланс A на 1$, а БД C — NOP.
+
+Сравнение 2PC и TC/C:
+
+|      | Первый этап                                             | Второй этап: успех                 | Второй этап: сбой                        |
 |------|--------------------------------------------------------|------------------------------------|-------------------------------------------|
-| 2PC  | transactions are not done yet                          | Commit/Cancel all transactions     | Cancel all transactions                   |
-| TC/C | All transactions are completed - committed or canceled | Execute new transactions if needed | Reverse the already committed transaction |
+| 2PC  | Транзакции ещё не выполнены                            | Зафиксировать/отменить все транзакции | Отменить все транзакции                |
+| TC/C | Все транзакции выполнены — зафиксированы или отменены  | Выполнить новые транзакции при необходимости | Отменить уже зафиксированную транзакцию |
 
-TC/C is also referred to as a distributed transaction by compensation. High-level operation is handled in the business logic.
+TC/C также называют распределённой транзакцией с компенсацией. Операциями верхнего уровня управляет бизнес-логика.
 
-Other properties of TC/C:
- * database agnostic, as long as database supports transactions
- * Details and complexity of distributed transactions need to be handled in the business logic
+Другие свойства TC/C:
+ * Не зависит от конкретной базы данных, если она поддерживает транзакции.
+ * Детали и сложность распределённых транзакций обрабатываются в бизнес-логике.
 
-### **TC/C Failure modes**
-If the coordinator dies mid-flight, it needs to recover its intermediary state. 
-That can be done by maintaining phase status tables, atomically updated within the database shards:
-
-<div style="margin-left:3rem">
-    <img src="./images/phase-status-tables.png" alt="phase-status-tables" width="500" />
-</div>
-
-What does that table contain:
- * ID and content of distributed transaction
- * status of try phase - not sent, has been sent, response received
- * second phase name - confirm or cancel
- * status of second phase
- * out-of-order flag (explained later)
-
-One caveat when using TC/C is that there is a brief moment where the account states are inconsistent with each other while a distributed transaction is in-flight:
+### **Сценарии отказа TC/C**
+Если координатор выходит из строя посреди выполнения операции, ему необходимо восстановить промежуточное состояние.
+Для этого можно поддерживать таблицы состояния этапов и атомарно обновлять их в шардах базы данных:
 
 <div style="margin-left:3rem">
-    <img src="./images/unbalanced-state.png" alt="unbalanced-state" width="500" />
+    <img src="./images/phase-status-tables.png" alt="таблицы состояния этапов" width="500" />
 </div>
 
-This is fine as long as we always recover from this state and that users cannot use the intermediary state to eg spend it. 
-This is guaranteed by always executing deductions prior to additions.
+Что содержит такая таблица:
+ * ID и содержимое распределённой транзакции.
+ * Состояние этапа try: не отправлен, отправлен, получен ответ.
+ * Название второго этапа: confirm или cancel.
+ * Состояние второго этапа.
+ * Флаг out-of-order (рассмотрен далее).
 
-| Try phase choices  | Account A | Account C |
+При использовании TC/C на короткое время состояния счетов могут стать несогласованными, пока выполняется распределённая транзакция:
+
+<div style="margin-left:3rem">
+    <img src="./images/unbalanced-state.png" alt="несбалансированное состояние" width="500" />
+</div>
+
+Это допустимо, если мы всегда восстанавливаемся из такого состояния и пользователи не могут использовать промежуточный баланс, например потратить его.
+Это обеспечивается тем, что списания всегда выполняются раньше зачислений.
+
+| Варианты этапа Try | Счёт A   | Счёт C   |
 |--------------------|-----------|-----------|
-| Choice 1           | -$1       | NOP       |
-| Choice 2 (invalid) | NOP       | +$1       |
-| Choice 3 (invalid) | -$1       | +$1       |
+| Вариант 1             | -$1       | NOP       |
+| Вариант 2 (недопустим) | NOP       | +$1       |
+| Вариант 3 (недопустим) | -$1       | +$1       |
 
-Note that choice 3 from table above is invalid because we cannot guarantee atomic execution of transactions across different databases without relying on 2PC.
+Обратите внимание, что вариант 3 в таблице недопустим: без 2PC нельзя гарантировать атомарное выполнение транзакций в разных базах данных.
 
-One edge-case to address is out of order execution:
-
-<div style="margin-left:3rem">
-    <img src="./images/out-of-order-execution.png" alt="out-of-order-execution" width="500" />
-</div>
-
-It is possible that a database receives a cancel operation, before receiving a try. This edge case can be handled by adding an out of order flag in our phase status table.
-When we receive a try operation, we first check if the out of order flag is set and if so, a failure is returned.
-
-### **Distributed transaction using Saga**
-Another popular approach is using Sagas - a standard for implementing distributed transactions with microservice architectures.
-
-Here's how it works:
- * all operations are ordered in a sequence. All operations are independent in their own databases.
- * operations are executed from first to last
- * when an operation fails, the entire process starts to roll back until the beginning with compensating operations
+Нужно также обработать крайний случай выполнения операций не по порядку:
 
 <div style="margin-left:3rem">
-    <img src="./images/saga.png" alt="saga" width="500" />
+    <img src="./images/out-of-order-execution.png" alt="выполнение не по порядку" width="500" />
 </div>
 
-How do we coordinate the workflow? There are two approaches we can take:
- * Choreography - all services involved in a saga subscribe to the related events and do their part in the saga
- * Orchestration - a single coordinator instructs all services to do their jobs in the correct order
+База данных может получить операцию cancel раньше операции try. Этот крайний случай можно обработать, добавив в таблицу состояния этапов флаг out-of-order.
+При получении операции try сначала проверяется этот флаг; если он установлен, возвращается ошибка.
 
-The challenge of using choreography is that business logic is split across multiple service, which communicate asynchronously.
-The orchestration approach handles complexity well, so it is typically the preferred approach in a digital wallet system.
+### **Распределённая транзакция с использованием Saga**
+Ещё один популярный подход — Saga, стандарт реализации распределённых транзакций в архитектурах микросервисов.
 
-Here's a comparison between TC/C and Saga:
+Подход работает следующим образом:
+ * Все операции упорядочены в последовательность. Каждая операция выполняется независимо в своей базе данных.
+ * Операции выполняются по порядку, от первой до последней.
+ * Если операция завершается сбоем, весь процесс откатывается к началу с помощью компенсирующих операций.
+
+<div style="margin-left:3rem">
+    <img src="./images/saga.png" alt="Saga" width="500" />
+</div>
+
+Как координировать процесс? Есть два подхода:
+ * Хореография — все сервисы, участвующие в Saga, подписываются на соответствующие события и выполняют свою часть процесса.
+ * Оркестрация — единый координатор указывает сервисам выполнять задачи в нужном порядке.
+
+Сложность хореографии в том, что бизнес-логика распределена между несколькими сервисами, взаимодействующими асинхронно.
+Оркестрация лучше справляется со сложностью, поэтому для системы цифрового кошелька обычно предпочтительнее именно этот подход.
+
+Сравнение TC/C и Saga:
 
 |                                           | TC/C            | Saga                     |
 |-------------------------------------------|-----------------|--------------------------|
-| Compensating action                       | In Cancel phase | In rollback phase        |
-| Central coordination                      | Yes             | Yes (orchestration mode) |
-| Operation execution order                 | any             | linear                   |
-| Parallel execution possibility            | Yes             | No (linear execution)    |
-| Could see the partial inconsistent status | Yes             | Yes                      |
-| Application or database logic             | Application     | Application              |
+| Компенсирующее действие                   | На этапе Cancel | На этапе отката          |
+| Централизованная координация               | Да              | Да (режим оркестрации)   |
+| Порядок выполнения операций                | Любой           | Последовательный         |
+| Возможность параллельного выполнения       | Да              | Нет (последовательно)    |
+| Возможны частично несогласованные состояния | Да             | Да                       |
+| Логика приложения или базы данных          | Приложение      | Приложение               |
 
-The main difference is that TC/C is parallelizable, so our decision is based on the latency requirement - if we need to achieve low latency, we should go for the TC/C approach.
+Главное отличие в том, что TC/C допускает параллельное выполнение. Поэтому выбор зависит от требований к задержке: если нужна низкая задержка, следует выбрать TC/C.
 
-Regardless of the approach we take, we still need to support auditing and replaying history to recover from failed states.
+Независимо от выбранного подхода, необходимо поддерживать аудит и повторное воспроизведение истории для восстановления после сбоев.
 
-### **Event sourcing**
-In real-life, a digital wallet application might be audited and we have to answer certain questions:
- * Do we know the account balance at any given time?
- * How do we know the historical and current balances are correct?
- * How do we prove the system logic is correct after a code change?
+### **Хранение событий (Event Sourcing)**
+В реальной системе цифрового кошелька может проводиться аудит, и нам придётся отвечать на следующие вопросы:
+ * Известен ли баланс счёта на любой момент времени?
+ * Как убедиться, что исторические и текущие балансы верны?
+ * Как доказать корректность логики системы после изменения кода?
 
-Event sourcing is a technique which helps us answer these questions.
+Хранение событий (Event Sourcing) — это техника, помогающая ответить на эти вопросы.
 
-It consists of four concepts:
- * command - intended action from the real world, eg transfer 1$ from account A to B. Need to have a global order, due to which they're put into a FIFO queue.
-   * commands, unlike events, can fail and have some randomness due to eg IO or invalid state.
-   * commands can produce zero or more events
-   * event generation can contain randomness such as external IO. This will be revisited later
- * event - historical facts about events which occured in the system, eg "transferred 1$ from A to B".
-   * unlike commands, events are facts that have happened within our system
-   * similar to commands, they need to be ordered, hence, they're enqueued in a FIFO queue
- * state - what has changed as a result of an event. Eg a key-value store between account and their balances.
- * state machine - drives the event sourcing process. It mainly validates commands and applies events to update the system state.
-   * the state machine should be deterministic, hence, it shouldn't read external IO or rely on randomness. 
+В основе подхода лежат четыре понятия:
+ * команда (command) — предполагаемое действие в реальном мире, например перевод 1$ со счёта A на счёт B. Команды нужно упорядочить глобально, поэтому они помещаются в очередь FIFO.
+    * В отличие от событий, команды могут завершиться сбоем; их результат может зависеть, например, от ввода-вывода или некорректного состояния.
+    * Команда может породить ноль или более событий.
+    * Генерация события может зависеть от внешних факторов, например от внешнего ввода-вывода. К этому мы вернёмся позже.
+ * событие (event) — исторический факт о том, что произошло в системе, например «переведён 1$ со счёта A на счёт B».
+    * В отличие от команд, события — это факты, уже произошедшие в системе.
+    * Как и команды, события нужно упорядочивать, поэтому они помещаются в очередь FIFO.
+ * состояние (state) — изменения, возникшие в результате события. Например, соответствия между счетами и их балансами в хранилище ключ-значение.
+ * конечный автомат (state machine) — управляет процессом хранения событий. Он в основном проверяет команды и применяет события для обновления состояния системы.
+    * Конечный автомат должен быть детерминированным, поэтому ему не следует обращаться к внешнему вводу-выводу или полагаться на случайность.
 
 <div style="margin-left:3rem">
-    <img src="./images/event-sourcing.png" alt="event-sourcing" width="500" />
+    <img src="./images/event-sourcing.png" alt="хранение событий" width="500" />
 </div>
 
-Here's a dynamic view of event sourcing:
+Динамическое представление процесса хранения событий:
 
 <div style="margin-left:3rem">
-    <img src="./images/dynamic-event-sourcing.png" alt="dynamic-event-sourcing" width="500" />
+    <img src="./images/dynamic-event-sourcing.png" alt="динамическое представление хранения событий" width="500" />
 </div>
 
-For our wallet service, the commands are balance transfer requests. We can put them in a FIFO queue, such as Kafka:
+В нашем сервисе кошелька команды — это запросы на перевод средств. Их можно помещать в очередь FIFO, например Kafka:
 
 <div style="margin-left:3rem">
-    <img src="./images/command-queue.png" alt="command-queue" width="500" />
+    <img src="./images/command-queue.png" alt="очередь команд" width="500" />
 </div>
 
-Here's the full picture:
+Полная схема:
 
 <div style="margin-left:3rem">
-    <img src="./images/wallet-service-state-macghine.png" alt="wallet-service-state-machine" width="500" />
+    <img src="./images/wallet-service-state-macghine.png" alt="конечный автомат сервиса кошелька" width="500" />
 </div>
 
- * state machine reads commands from the command queue
- * balance state is read from the database
- * command is validated. If valid, two events for each of the accounts is generated
- * next event is read and applied by updating the balance (state) in the database
+ * Конечный автомат считывает команды из очереди команд.
+ * Состояние баланса считывается из базы данных.
+ * Команда проверяется. Если она корректна, для счетов создаются два события.
+ * Затем считывается следующее событие и применяется: баланс (состояние) обновляется в базе данных.
 
-The main advantage of using event sourcing is its reproducibility. In this design, all state update operations are saved as immutable history of all balance changes.
+Главное преимущество хранения событий — возможность воспроизведения. В этой архитектуре все операции обновления состояния сохраняются как неизменяемая история изменений баланса.
 
-Historical balances can always be reconstructed by replaying events from the beginning. 
-Because the event list is immutable and the state machine is deterministic, we are guaranteed to succeed in replaying any of the intermediary states.
+Исторические балансы всегда можно восстановить, повторно обработав события с самого начала.
+Поскольку список событий неизменяем, а конечный автомат детерминирован, можно гарантированно воспроизвести любое промежуточное состояние.
 
 <div style="margin-left:3rem">
-    <img src="./images/historical-states.png" alt="historical-states" width="500" />
+    <img src="./images/historical-states.png" alt="исторические состояния" width="500" />
 </div>
 
-All audit-related questions asked in the beginning of the section can be addressed by relying on event sourcing:
- * Do we know the account balance at any given time? - events can be replayed from the start until the point which we are interested in
- * How do we know the historical and current balances are correct? - correctness can be verified by recalculating all events from the start
- * How do we prove the system logic is correct after a code change? - we can run different versions of the code against the events and verify their results are identical
+На все вопросы об аудите, заданные в начале раздела, можно ответить с помощью хранения событий:
+ * Известен ли баланс счёта на любой момент времени? — события можно повторно обработать с начала до нужного момента.
+ * Как убедиться, что исторические и текущие балансы верны? — корректность можно проверить, пересчитав все события с начала.
+ * Как доказать корректность логики после изменения кода? — можно запустить разные версии кода на этих событиях и проверить, что результаты совпадают.
 
-Answering client queries about their balance can be addressed using the CQRS architecture - there can be multiple read-only state machines which are responsible for querying the historical state, based on the immutable events list:
+На запросы клиентов о балансе можно отвечать с помощью архитектуры CQRS: несколько автоматов, доступных только для чтения, могут запрашивать историческое состояние на основе неизменяемого списка событий:
 
 <div style="margin-left:3rem">
-    <img src="./images/cqrs-architecture.png" alt="cqrs-architecture" width="500" />
+    <img src="./images/cqrs-architecture.png" alt="архитектура CQRS" width="500" />
 </div>
 
 ---
 
-## Step 3: Design Deep Dive
-In this section we'll explore some performance optimizations as we're still required to scale to 1mil TPS.
+## Шаг 3: Подробный разбор архитектуры
+В этом разделе рассмотрим оптимизацию производительности: система по-прежнему должна масштабироваться до 1 млн TPS.
 
-### **High-performance event sourcing**
-The first optimization we'll explore is to save commands and events into local disk store instead of an external store such as Kafka.
+### **Высокопроизводительное хранение событий**
+Первое улучшение — сохранять команды и события на локальный диск, а не во внешнее хранилище, например Kafka.
 
-This avoids the network latency and also, since we're only doing appends, that operation is generally fast for HDDs.
+Это позволяет избежать сетевой задержки; кроме того, поскольку мы только дописываем данные, такая операция обычно выполняется быстро даже на HDD.
 
-The next optimization is to cache recent commands and events in-memory in order to save the time of loading them back from disk.
+Следующее улучшение — кэшировать последние команды и события в памяти, чтобы не тратить время на их повторную загрузку с диска.
 
-At a low-level, we can achieve the aforementioned optimizations by leveraging a command called mmap, which stores data in local disk as well as cache it in-memory:
-
-<div style="margin-left:3rem">
-    <img src="./images/mmap-optimization.png" alt="mmap-optimization" width="500" />
-</div>
-
-The next optimization we can do is also store state in the local file system using SQLite - a file-based local relational database. RocksDB is also another good option.
-
-For our purposes, we'll choose RocksDB because it uses a log-structured merge-tree (LSM), which is optimized for write operations.
-Read performance is optimized via caching.
+На низком уровне эти улучшения можно реализовать с помощью системного вызова mmap, который сохраняет данные на локальном диске и одновременно кэширует их в памяти:
 
 <div style="margin-left:3rem">
-    <img src="./images/rocks-db-approach.png" alt="rocks-db-approach" width="500" />
+    <img src="./images/mmap-optimization.png" alt="оптимизация с помощью mmap" width="500" />
 </div>
 
-To optimize the reproducibility, we can periodically save snapshots to disk so that we don't have to reproduce a given state from the very beginning every time. We could store snapshots as large binary files in distributed file storage, eg HDFS:
+Ещё одно улучшение — хранить состояние в локальной файловой системе с помощью SQLite, локальной реляционной базы данных на основе файлов. Другой подходящий вариант — RocksDB.
+
+Для нашей задачи выберем RocksDB, поскольку она использует log-structured merge-tree (LSM), оптимизированное для операций записи.
+Производительность чтения повышается за счёт кэширования.
 
 <div style="margin-left:3rem">
-    <img src="./images/snapshot-approach.png" alt="snapshot-approach" width="500" />
+    <img src="./images/rocks-db-approach.png" alt="подход на основе RocksDB" width="500" />
 </div>
 
-### **Reliable high-performance event sourcing**
-All the optimizations done so far are great, but they make our service stateful. We need to introduce some form of replication for reliability purposes.
-
-Before we do that, we should analyze what kind of data needs high reliability in our system:
- * state and snapshot can always be regenerated by reproducing them from the events list. Hence, we only need to guarantee the event list reliability.
- * one might think we can always regenerate the events list from the command list, but that is not true, since commands are non-deterministic.
- * conclusion is that we need to ensure high reliability for the events list only
-
-In order to achieve high reliability for events, we need to replicate the list across multiple nodes. We need to guarantee:
- * that there is no data loss
- * the relative order of data within a log file remains the same across replicas
-
-To achieve this, we can employ a consensus algorithm, such as Raft.
-
-With Raft, there is a leader who is active and there are followers who are passive. If a leader dies, one of the followers picks up. 
-As long as more than half of the nodes are up, the system continues running.
+Чтобы ускорить воспроизведение, можно периодически сохранять снимки на диск и не восстанавливать нужное состояние каждый раз с самого начала. Снимки можно хранить в виде больших двоичных файлов в распределённом файловом хранилище, например HDFS:
 
 <div style="margin-left:3rem">
-    <img src="./images/raft-replication.png" alt="raft-replication" width="500" />
+    <img src="./images/snapshot-approach.png" alt="подход с использованием снимков" width="500" />
 </div>
 
-With this approach, all nodes update the state, based on the events list. Raft ensures leader and followers have the same events list.
+### **Надёжное высокопроизводительное хранение событий**
+Все рассмотренные улучшения полезны, но они делают наш сервис stateful. Для обеспечения надёжности нужно добавить репликацию.
 
-### **Distributed event sourcing**
-So far, we've managed to design a system which has high single-node performance and is reliable.
+Прежде чем это сделать, разберёмся, какие данные в системе требуют высокой надёжности:
+ * Состояние и снимок всегда можно восстановить, повторно обработав список событий. Поэтому достаточно обеспечить надёжность списка событий.
+ * Можно предположить, что список событий всегда восстанавливается из списка команд, но это не так, поскольку команды недетерминированы.
+ * Следовательно, высокую надёжность необходимо обеспечить только для списка событий.
 
-Some limitations we have to tackle:
- * The capacity of a single raft group is limited. At some point, we need to shard the data and implement distributed transactions
- * In the CQRS architecture, the request/response flow is slow. A client would need to periodically poll the system to learn when their wallet has been updated
+Чтобы обеспечить высокую надёжность событий, нужно реплицировать список на несколько узлов и гарантировать:
+ * отсутствие потери данных;
+ * сохранение относительного порядка данных в файле журнала на всех репликах.
 
-Polling is not real-time, hence, it can take a while for a user to learn about an update in their balance. Also, it can overload the query services if the polling frequency is too high:
+Для этого можно использовать алгоритм консенсуса, например Raft.
+
+В Raft есть активный лидер и пассивные последователи. Если лидер выходит из строя, его заменяет один из последователей.
+Система продолжает работать, пока доступно больше половины узлов.
 
 <div style="margin-left:3rem">
-    <img src="./images/polling-approach.png" alt="polling-approach" width="500" />
+    <img src="./images/raft-replication.png" alt="репликация Raft" width="500" />
 </div>
 
-To mitigate the system load, we can introduce a reverse proxy, which sends commands on behalf of the user and polls for response on their behalf:
+При таком подходе все узлы обновляют состояние на основе списка событий. Raft гарантирует, что список событий лидера и последователей совпадает.
+
+### **Распределённое хранение событий**
+К этому моменту мы спроектировали надёжную систему с высокой производительностью на одном узле.
+
+Остаётся решить несколько проблем:
+ * Производительность одной группы Raft ограничена. В какой-то момент потребуется распределить данные по шардам и реализовать распределённые транзакции.
+ * В архитектуре CQRS цикл запроса и ответа медленный. Клиенту придётся периодически опрашивать систему, чтобы узнать, когда обновился его кошелёк.
+
+Опрос не происходит в реальном времени, поэтому пользователь может узнать об изменении баланса с задержкой. Кроме того, при слишком частом опросе можно перегрузить сервисы обработки запросов:
 
 <div style="margin-left:3rem">
-    <img src="./images/reverse-proxy.png" alt="reverse-proxy" width="500" />
+    <img src="./images/polling-approach.png" alt="подход с периодическим опросом" width="500" />
 </div>
 
-This alleviates the system load as we could fetch data for multiple users using a single request, but it still doesn't solve the real-time receipt requirement.
-
-One final change we could do is make the read-only state machines push responses back to the reverse proxy once it's available. This can give the user the sense that updates happen real-time:
+Чтобы снизить нагрузку на систему, можно добавить обратный прокси, который отправляет команды и опрашивает систему от имени пользователя:
 
 <div style="margin-left:3rem">
-    <img src="./images/push-state-machines.png" alt="push-state-machines" width="500" />
+    <img src="./images/reverse-proxy.png" alt="обратный прокси" width="500" />
 </div>
 
-Finally, to scale the system even further, we can shard the system into multiple raft groups, where we implement distributed transactions on top of them using an orchestrator either via TC/C or Sagas:
+Это снижает нагрузку, поскольку данные для нескольких пользователей можно получать одним запросом, но требование доставки обновлений в реальном времени всё ещё не выполняется.
+
+Последнее изменение — настроить автоматы, доступные только для чтения, так, чтобы они отправляли ответы обратному прокси сразу после их появления. Тогда пользователь будет видеть обновления в реальном времени:
 
 <div style="margin-left:3rem">
-    <img src="./images/sharded-raft-groups.png" alt="sharded-raft-groups" width="500" />
+    <img src="./images/push-state-machines.png" alt="передача данных автоматами состояния" width="500" />
 </div>
 
-Here's an example lifecycle of a balance transfer request in our final system:
- * User A sends a distributed transaction to the Saga coordinator with two operations - `A-1` and `C+1`.
- * Saga coordinator creates a record in the phase status table to trace the status of the transaction
- * Coordinator determines which partitions it needs to send commands to.
- * Partition 1's raft leader receives the `A-1` command, validates it, converts it to an event and replicates it across other nodes in the raft group
- * Event result is synchronized to the read state machine, which pushes a response back to the coordinator
- * Coordinator creates a record indicating that the operation was successful and proceeds with the next operation - `C+1`
- * Next operation is executed similarly to the first one - partition is determined, command is sent, executed, read state machine pushes back a response
- * Coordinator creates a record indicating operation 2 was also successful and finally informs the client of the result
+Наконец, для дальнейшего масштабирования можно распределить систему по нескольким группам Raft и реализовать поверх них распределённые транзакции, используя оркестратор и TC/C либо Saga:
+
+<div style="margin-left:3rem">
+    <img src="./images/sharded-raft-groups.png" alt="группы Raft с шардингом" width="500" />
+</div>
+
+Пример жизненного цикла запроса на перевод средств в итоговой системе:
+ * Пользователь A отправляет координатору Saga распределённую транзакцию с двумя операциями: `A-1` и `C+1`.
+ * Координатор Saga создаёт запись в таблице состояния этапов, чтобы отслеживать состояние транзакции.
+ * Координатор определяет, в какие разделы нужно отправить команды.
+ * Лидер Raft раздела 1 получает команду `A-1`, проверяет её, преобразует в событие и реплицирует на остальные узлы группы Raft.
+ * Результат события синхронизируется с автоматом чтения, который отправляет ответ координатору.
+ * Координатор создаёт запись об успешном выполнении операции и переходит к следующей операции — `C+1`.
+ * Следующая операция выполняется аналогично первой: определяется раздел, отправляется и выполняется команда, после чего автомат чтения отправляет ответ.
+ * Координатор отмечает успешное выполнение второй операции и сообщает результат клиенту.
 
 ---
 
-## Step 4: Wrap Up
-Here's the evolution of our design:
- * We started from a solution using an in-memory Redis. The problem with this approach is that it is not durable storage.
- * We moved on to using relational databases, on top of which we execute distributed transactions using 2PC, TC/C or distributed saga.
- * Next, we introduced event sourcing in order to make all the operations auditable
- * We started by storing the data into external storage using external database and queue, but that's not performant
- * We proceeded to store data in local file storage, leveraging the performance of append-only operations. We also used caching to optimize the read path
- * The previous approach, although performant, wasn't durable. Hence, we introduced Raft consensus with replication to avoid single points of failure
- * We also adopted CQRS with a reverse proxy to manage a transaction's lifecycle on behalf of our users
- * Finally, we partitioned our data across multiple raft groups, which are orchestrated using a distributed transaction mechanism - TC/C or distributed saga
+## Шаг 4: Итоги
+Эволюция нашей архитектуры:
+ * Мы начали с решения на основе Redis в памяти. Его недостаток — отсутствие долговременного хранения.
+ * Затем перешли к реляционным базам данных, поверх которых выполняются распределённые транзакции с использованием 2PC, TC/C или распределённой Saga.
+ * После этого добавили хранение событий, чтобы обеспечить аудит всех операций.
+ * Сначала данные хранились во внешней базе данных и очереди, но это решение не обеспечивало нужной производительности.
+ * Затем мы перешли к локальному файловому хранилищу, используя преимущества операций с добавлением данных. Для оптимизации чтения также добавили кэширование.
+ * Предыдущий подход был производительным, но не обеспечивал долговременного хранения. Поэтому мы добавили консенсус Raft и репликацию, чтобы избежать единой точки отказа.
+ * Также мы внедрили CQRS с обратным прокси, который управляет жизненным циклом транзакции от имени пользователя.
+ * Наконец, мы распределили данные по нескольким группам Raft, которыми управляет механизм распределённых транзакций: TC/C или распределённая Saga.

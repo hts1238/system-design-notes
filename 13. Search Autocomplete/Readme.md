@@ -1,182 +1,181 @@
-# Chapter 13: Design a Search Autocomplete System
+# Глава 13: Проектирование системы автодополнения поиска
 
-## Introduction
-Autocomplete, also known as typeahead or incremental search, provides real-time suggestions to users as they type in search boxes. The system must efficiently deliver top-k relevant and popular suggestions based on historical query data.
+## Введение
+Автодополнение, также называемое поиском по мере ввода, предлагает пользователям варианты в реальном времени, пока они вводят текст в поисковую строку. Система должна эффективно выдавать top-k релевантных и популярных вариантов на основе истории запросов.
 
-### Key Features
-- Suggest up to **5 autocomplete results**.
-- Based on **query popularity** (frequency).
-- Support only **lowercase English characters**.
-- Fast response time (<100 ms) and scalable.
-
----
-
-## Step 1: Understanding the Problem
-
-### Requirements
-1. **Real-Time Suggestions:** Display relevant matches as the user types.
-2. **Top-k Results:** Return up to 5 results sorted by popularity.
-3. **Scalability:** Handle **10 million DAU** with a peak QPS of **48,000**.
-4. **High Availability:** Handle failures without system downtime.
-5. **Data Growth:** Support daily storage growth of **0.4 GB** for new query data.
+### Основные функции
+- Предлагать до **5 вариантов автодополнения**.
+- Учитывать **популярность запросов** (частоту).
+- Поддерживать только **строчные символы английского алфавита**.
+- Обеспечивать быстрое время ответа (<100 ms) и масштабируемость.
 
 ---
 
-## Step 2: High-Level Design
-At the high-level, the system is broken down into two services:
-1. **Data Gathering Service:** 
-    - Collects user queries and aggregates them for frequency analysis in real-time.
-    - Real-time processing is not practical for large data sets; however, it is a good starting point
+## Шаг 1: Понимание задачи
 
-
-2. **Query Service:** Provides the top-k suggestions based on the user’s input.
+### Требования
+1. **Подсказки в реальном времени:** показывать подходящие варианты по мере ввода текста.
+2. **Результаты top-k:** возвращать до 5 вариантов, отсортированных по популярности.
+3. **Масштабируемость:** обслуживать **10 миллионов DAU** при пиковой нагрузке **48 000 QPS**.
+4. **Высокая доступность:** выдерживать сбои без остановки системы.
+5. **Рост данных:** поддерживать ежедневный прирост хранилища на **0.4 GB** для новых данных о запросах.
 
 ---
 
-### Data Gathering Service
+## Шаг 2: Архитектура верхнего уровня
+На верхнем уровне система состоит из двух сервисов:
+1. **Сервис сбора данных:** 
+    - Собирает запросы пользователей и в реальном времени агрегирует их для анализа частоты.
+    - Обрабатывать большие наборы данных в реальном времени непрактично, однако это хорошая отправная точка.
+
+
+2. **Сервис запросов:** предоставляет top-k подсказок на основе ввода пользователя.
+
+---
+
+### Сервис сбора данных
 <div style="margin-left:3rem">
-    <img src="./images/data-gathering.png" alt="Data Gathering" width="600">
+    <img src="./images/data-gathering.png" alt="Сбор данных" width="600">
 </div>
 
-- Aggregates query data from analytics logs and updates the frequency table.
-- Processes historical data weekly to build a **trie** (prefix tree).
+- Агрегирует данные о запросах из журналов аналитики и обновляет таблицу частот.
+- Еженедельно обрабатывает исторические данные, чтобы построить **trie** (префиксное дерево).
 
 
 
 
-### Query Service
+### Сервис запросов
 <div style="margin-left:3rem">
-    <img src="./images/frequency-table.png" alt="Frequency Table" width="400">
-    <img src="./images/basic-search-suggestions.png" alt="Search Suggestions" width="360">
+    <img src="./images/frequency-table.png" alt="Таблица частот" width="400">
+    <img src="./images/basic-search-suggestions.png" alt="Поисковые подсказки" width="360">
 </div>
 
-- Uses the frequency table from data gathering service.
-- Processes user input and retrieves top-k suggestions from the frequency table using a Trie.
-- Optimized for fast lookups using caching and efficient data structures.
-- For example when a user types “tw” in the search box, the following top 5 searched queries are displayed.
+- Использует таблицу частот, сформированную сервисом сбора данных.
+- Обрабатывает ввод пользователя и с помощью Trie получает из таблицы частот подсказки top-k.
+- Оптимизирован для быстрого поиска благодаря кэшированию и эффективным структурам данных.
+- Например, когда пользователь вводит в поисковую строку «tw», отображаются следующие 5 самых популярных запросов.
 
 
 ---
 
-## Step 3: Design Deep Dive
+## Шаг 3: Детальное проектирование
 
-### Trie Data Structure
-The **trie** is a tree-like data structure used to store and retrieve query strings efficiently.
+### Структура данных Trie
+**Trie** — древовидная структура данных для эффективного хранения и получения строк запросов.
 
-#### Key Features
-1. **Compact Storage:** Represents prefixes hierarchically to minimize redundancy.
-2. **Frequency Information:** Stores the popularity of queries at each node.
+#### Основные свойства
+1. **Компактное хранение:** представляет префиксы в виде иерархии, чтобы минимизировать дублирование.
+2. **Данные о частоте:** хранит популярность запросов в каждом узле.
 
-4. **Steps to get top k most searched queries**
+4. **Как получить k самых популярных запросов**
    <div style="margin-left:3rem">
-      <img src="./images/trie-structure.png" alt="Trie Structure" width="500">
+       <img src="./images/trie-structure.png" alt="Структура Trie" width="500">
    </div>
 
-    - Find the prefix
-    - Traverse the subtree from prefix node to get all valid children
-    - Sort the children and get top k 
+    - Найти префикс.
+    - Обойти поддерево от узла префикса, чтобы получить все подходящие дочерние узлы.
+    - Отсортировать дочерние узлы и выбрать top-k. 
 
 
-3. **Optimizations:**
-   - Cache top-k queries at each node to speed up retrieval and avoid traversing the whole trie.
+3. **Оптимизации:**
+   - Кэшировать запросы top-k в каждом узле, чтобы ускорить получение результатов и не обходить все дерево Trie.
 
-        <img src="./images/cached-trie.png" alt="Cached Trie" width="600">
+        <img src="./images/cached-trie.png" alt="Trie с кэшированием" width="600">
 
-   - Limit prefix length to reduce search space as users rarely type a loong search query (say 50).
+   - Ограничить длину префикса, чтобы сократить область поиска: пользователи редко вводят очень длинные запросы (например, длиной 50 символов).
 
-#### Trie Operations
-1. **Create:** 
-    - Built weekly using aggregated query data.
-    - The source of data is from Analytics Log/DB.
-2. **Update:** Rarely updated in real-time; weekly updates replace old data.
-3. **Delete:** 
+#### Операции с Trie
+1. **Создание:** 
+    - Строится еженедельно на основе агрегированных данных о запросах.
+    - Источник данных — журнал/БД аналитики.
+2. **Обновление:** в реальном времени обновляется редко; при еженедельном обновлении старые данные заменяются.
+3. **Удаление:** 
       <div style="margin-left:3rem">
-         <img src="./images/delete-kv.png" alt="Delete KV" width="500">
+          <img src="./images/delete-kv.png" alt="Удаление из KV" width="500">
       </div>
 
-    - Filters remove unwanted or harmful suggestions (e.g., hate speech).
-    - Having a filter layer gives us the flexibility of removing results based on different filter rules.
-    - Unwanted suggestions are removed physically from the database asynchronically.
+    - Фильтры удаляют нежелательные или вредоносные подсказки (например, высказывания, разжигающие ненависть).
+    - Слой фильтрации позволяет удалять результаты по разным правилам.
+    - Нежелательные подсказки асинхронно удаляются непосредственно из базы данных.
     
 
 ---
 
-### Query Processing Flow
-1. **Prefix Search:**
-   - Identify the prefix node corresponding to the user’s input.
-   - Traverse the subtree to collect valid suggestions.
-2. **Top-k Sorting:**
-   - Cache top-k suggestions at each node to minimize sorting overhead.
-3. **Response Construction:**
-   - Construct results using cached data for fast response times.
+### Поток обработки запросов
+1. **Поиск по префиксу:**
+   - Найти узел префикса, соответствующий вводу пользователя.
+   - Обойти поддерево и собрать подходящие подсказки.
+2. **Сортировка top-k:**
+   - Кэшировать подсказки top-k в каждом узле, чтобы сократить затраты на сортировку.
+3. **Формирование ответа:**
+   - Сформировать результаты из кэшированных данных для быстрого ответа.
 
 ---
 
-### Optimizations
-1. **Cache at Each Node:**
-   - Store the top-k queries to avoid redundant traversals.
-2. **Limit Prefix Length:**
-   - Cap prefix length to a small value (e.g., 50 characters) for faster lookups.
-3. **AJAX Requests:**
-   - Use lightweight asynchronous requests for real-time responses.
-4. **Browser Caching:**
-   - Save autocomplete results in the browser cache for frequently searched terms.
+### Оптимизации
+1. **Кэширование в каждом узле:**
+   - Хранить запросы top-k, чтобы избежать повторных обходов дерева.
+2. **Ограничение длины префикса:**
+   - Ограничить длину префикса небольшим значением (например, 50 символов) для ускорения поиска.
+3. **Запросы AJAX:**
+   - Использовать легковесные асинхронные запросы для ответов в реальном времени.
+4. **Кэширование в браузере:**
+   - Сохранять результаты автодополнения в кэше браузера для часто вводимых запросов.
 
 ---
 
-### Data Gathering Pipeline
-In the high-level design, whenever a user types a search query, data is updated in real-time. This appraoch is not practical.
-- Users may enter billions of queries per day. Updating the trie on every query is not feasible.
-- Top suggestions may not change much one the trie is built.
+### Конвейер сбора данных
+В архитектуре верхнего уровня данные обновляются в реальном времени при каждом вводе поискового запроса. Такой подход непрактичен.
+- Пользователи могут вводить миллиарды запросов в день. Обновлять Trie после каждого запроса невозможно.
+- После построения Trie популярные подсказки могут долго не меняться.
 
 
-#### Updated Design
+#### Обновленная архитектура
 
 <div style="margin-left:3rem">
-   <img src="./images/data-gathering-flow.png" alt="Updated Data Gathering Flow" width="600">
+   <img src="./images/data-gathering-flow.png" alt="Обновленный поток сбора данных" width="600">
 </div>
 
-1. **Analytics Logs:**
-   - Stores raw query data as logs for weekly aggregation.
-   - Logs are append-only and are not indexed
-2. **Aggregators:**
-   - Process logs into frequency tables, suitable for trie construction.
-   - For real-time applications such as Twitter, aggregate data in a shorter time interval.
-   - For other cases, aggregating data less frequently, say once per week is good enough.
-3. **Workers:**
-   - Asynchronous servers rebuild the trie and store it in persistent storage.
-4. **Storage Options:**
-    - **Trie Cache**: Trie Cache is a distributed cache system that keeps trie in memory for fast read.
-    - **Trie DB** 
-        1. **Document Store (e.g., MongoDB)**: Since a new trie is built weekly, we can periodically take a snapshot of it, serialize it, and store the serialized data in the database like MongoDB
-        2. **Key-Value Store:** 
-            - Maps prefixes to node data for fast access.
-            - Every prefix in the trie is mapped to a key in a hash table.
-            - Data on each trie node is mapped to a value in a hash table.
+1. **Журналы аналитики:**
+   - Хранят необработанные данные запросов в виде журналов для еженедельной агрегации.
+   - Журналы доступны только для добавления, индексы для них не создаются.
+2. **Агрегаторы:**
+   - Преобразуют журналы в таблицы частот, подходящие для построения Trie.
+   - Для приложений реального времени, таких как Twitter, агрегируют данные за более короткие интервалы.
+   - В остальных случаях достаточно агрегировать данные реже, например раз в неделю.
+3. **Рабочие процессы:**
+   - Асинхронные серверы перестраивают Trie и сохраняют его в постоянном хранилище.
+4. **Варианты хранения:**
+    - **Кэш Trie**: распределенная система кэширования, хранящая Trie в памяти для быстрого чтения.
+    - **База данных Trie** 
+        1. **Хранилище документов (например, MongoDB)**: поскольку новый Trie строится еженедельно, можно периодически создавать его снимок, сериализовать его и сохранять сериализованные данные в базе данных, например MongoDB.
+        2. **Хранилище «ключ-значение»:** 
+            - Сопоставляет префиксы с данными узлов для быстрого доступа.
+            - Каждый префикс в Trie сопоставляется с ключом в хеш-таблице.
+            - Данные каждого узла Trie сопоставляются со значением в хеш-таблице.
 
-                <img src="./images/trie-db.png" alt="Trie DB" width="600">
+                <img src="./images/trie-db.png" alt="База данных Trie" width="600">
 ---
 
-### Scalability
-1. **Sharding:**
-   - Distribute trie nodes across servers based on prefix ranges (e.g., `a-m`, `n-z`).
-   - Further shard within prefixes to balance uneven distributions (e.g., `aa-ag`, `ah-an`).
-2. **Load Balancing:**
+### Масштабируемость
+1. **Шардирование:**
+   - Распределить узлы Trie между серверами по диапазонам префиксов (например, `a-m`, `n-z`).
+   - Дополнительно разделить диапазоны префиксов для балансировки неравномерного распределения (например, `aa-ag`, `ah-an`).
+2. **Балансировка нагрузки:**
    <div style="margin-left:3rem">
-      <img src="./images/sharding.png" alt="Sharding" width="400">
+       <img src="./images/sharding.png" alt="Шардирование" width="400">
    </div>
 
-   - Use a shard map manager to route requests to the appropriate server.
+   - Использовать диспетчер карты шардов для перенаправления запросов на нужный сервер.
 
 
 ---
 
-## Step 4: Advanced Features
+## Шаг 4: Расширенные функции
 
-### Multi-Language Support
-1. **Unicode Characters:** Use Unicode to support non-English languages.
-2. **Country-Specific Tries:** Build separate tries for different countries or regions.
+### Поддержка нескольких языков
+1. **Символы Unicode:** использовать Unicode для поддержки других языков.
+2. **Trie для отдельных стран:** строить отдельные Trie для разных стран или регионов.
 
-### Trending Queries
-- Handle real-time events by dynamically updating trie nodes or weighting recent queries more heavily.
-
+### Популярные запросы
+- Обрабатывать события в реальном времени, динамически обновляя узлы Trie или присваивая больший вес недавним запросам.
